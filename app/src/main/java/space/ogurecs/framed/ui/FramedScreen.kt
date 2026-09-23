@@ -129,11 +129,11 @@ data class SavedFramedItem(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FramedScreen() {
+fun FramedScreen(initialUris: List<Uri> = emptyList()) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var selectedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var selectedUris by remember(initialUris) { mutableStateOf<List<Uri>>(initialUris) }
     var currentUriIndex by remember { mutableIntStateOf(0) }
 
     var exifData by remember { mutableStateOf(ExifData()) }
@@ -153,14 +153,23 @@ fun FramedScreen() {
         scope.launch {
             isProcessing = true
             withContext(Dispatchers.IO) {
-                val parsedExif = ExifParser.parse(context, uri)
-                exifData = parsedExif
+                try {
+                    val parsedExif = ExifParser.parse(context, uri)
+                    exifData = parsedExif
 
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    val options = BitmapFactory.Options().apply {
-                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                    val stream = try {
+                        context.contentResolver.openInputStream(uri)
+                    } catch (e: Exception) {
+                        if (uri.path != null) java.io.FileInputStream(java.io.File(uri.path!!)) else null
                     }
-                    fullBitmap = BitmapFactory.decodeStream(stream, null, options)
+                    stream?.use { st ->
+                        val options = BitmapFactory.Options().apply {
+                            inPreferredConfig = Bitmap.Config.ARGB_8888
+                        }
+                        fullBitmap = BitmapFactory.decodeStream(st, null, options)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
             isProcessing = false

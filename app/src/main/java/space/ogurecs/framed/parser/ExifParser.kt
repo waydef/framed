@@ -11,9 +11,16 @@ import kotlin.math.roundToInt
 object ExifParser {
 
     fun parse(context: Context, uri: Uri): ExifData {
-        return context.contentResolver.openInputStream(uri)?.use { stream ->
-            parse(stream)
-        } ?: ExifData()
+        return try {
+            val stream = try {
+                context.contentResolver.openInputStream(uri)
+            } catch (e: Exception) {
+                if (uri.path != null) java.io.FileInputStream(java.io.File(uri.path!!)) else null
+            }
+            stream?.use { parse(it) } ?: ExifData()
+        } catch (e: Exception) {
+            ExifData()
+        }
     }
 
     fun parse(stream: InputStream): ExifData {
