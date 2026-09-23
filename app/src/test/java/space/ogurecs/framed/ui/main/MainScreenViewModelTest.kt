@@ -12,7 +12,9 @@ class FramedModelTest {
 
     @Test
     fun testCameraBrandDetection() {
-        assertEquals(CameraBrand.SONY, CameraBrand.detect("Sony ILCE-6600"))
+        assertEquals(CameraBrand.SONY_ALPHA, CameraBrand.detect("Sony", "ILCE-6600"))
+        assertEquals(CameraBrand.SONY_ALPHA, CameraBrand.detect("Sony ILCE-6600"))
+        assertEquals(CameraBrand.SONY, CameraBrand.detect("Sony DSC-RX100M7"))
         assertEquals(CameraBrand.CANON, CameraBrand.detect("Canon EOS R5"))
         assertEquals(CameraBrand.NIKON, CameraBrand.detect("NIKON CORPORATION"))
         assertEquals(CameraBrand.FUJIFILM, CameraBrand.detect("FUJIFILM X-T4"))
@@ -34,8 +36,9 @@ class FramedModelTest {
     @Test
     fun testFrameConfigDefaults() {
         val config = FrameConfig()
-        assertEquals(36f, config.fontSizeLine1)
-        assertEquals(24f, config.fontSizeLine2)
+        assertEquals(34f, config.fontSizeLine1)
+        assertEquals(22f, config.fontSizeLine2)
+        assertEquals(0.89f, config.photoScale)
         assertEquals(1.0f, config.textMasterScale)
         assertEquals(1.0f, config.logoScale)
         assertEquals(0f, config.logoOffsetY)
@@ -45,10 +48,15 @@ class FramedModelTest {
 
     @Test
     fun testCameraModelNormalizer() {
-        val normalizedSony = space.ogurecs.framed.parser.CameraModelNormalizer.normalize(
+        val normalizedSonyAlpha = space.ogurecs.framed.parser.CameraModelNormalizer.normalize(
+            CameraBrand.SONY_ALPHA, "Sony", "ILCE-6600"
+        )
+        assertEquals("6600", normalizedSonyAlpha)
+
+        val normalizedSonyClassic = space.ogurecs.framed.parser.CameraModelNormalizer.normalize(
             CameraBrand.SONY, "Sony", "ILCE-6600"
         )
-        assertEquals("Alpha 6600", normalizedSony)
+        assertEquals("α6600", normalizedSonyClassic)
 
         val normalizedNikon = space.ogurecs.framed.parser.CameraModelNormalizer.normalize(
             CameraBrand.NIKON, "NIKON", "Z 6_2"
@@ -63,8 +71,8 @@ class FramedModelTest {
 
     @Test
     fun testExportQualityBadges() {
-        assertEquals("100% без потерь", ExportQuality.ORIGINAL_100.badge)
-        assertEquals("1080p чётко", ExportQuality.TIKTOK_OPTIMIZED.badge)
+        assertEquals("без потерь", ExportQuality.ORIGINAL_100.badge)
+        assertEquals("1080p • чётко", ExportQuality.TIKTOK_OPTIMIZED.badge)
     }
 }
 

@@ -233,7 +233,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Framed",
+                            text = "framed",
                             fontWeight = FontWeight.Bold,
                             fontSize = 20.sp,
                             color = Color.White,
@@ -245,7 +245,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                     IconButton(onClick = { showGalleryModal = true }) {
                         Icon(
                             imageVector = Icons.Default.PhotoLibrary,
-                            contentDescription = "Галерея работ",
+                            contentDescription = "галерея работ",
                             tint = Color(0xFFCBD5E1)
                         )
                     }
@@ -256,7 +256,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                     }) {
                         Icon(
                             imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = "Выбрать фото",
+                            contentDescription = "выбрать фото",
                             tint = Color(0xFFCBD5E1)
                         )
                     }
@@ -342,14 +342,14 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                             }
                             Spacer(modifier = Modifier.height(18.dp))
                             Text(
-                                text = "Выберите фото с камеры",
+                                text = "выберите фото с камеры",
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Поддерживается пакетный выбор: один стиль рамки применится ко всем кадрам без потери качества",
+                                text = "поддерживается пакетный выбор: один стиль рамки применится ко всем кадрам без потери качества",
                                 fontSize = 13.sp,
                                 color = Color(0xFF94A3B8),
                                 textAlign = TextAlign.Center
@@ -366,7 +366,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                             ) {
                                 Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Открыть галерею", fontWeight = FontWeight.Medium)
+                                Text("открыть галерею", fontWeight = FontWeight.Medium)
                             }
                         }
                     }
@@ -412,25 +412,25 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                             Tab(
                                 selected = selectedTab == 0,
                                 onClick = { selectedTab = 0 },
-                                text = { Text("Формат", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                text = { Text("формат", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
                                 icon = { Icon(Icons.Default.AspectRatio, contentDescription = null, modifier = Modifier.size(14.dp)) }
                             )
                             Tab(
                                 selected = selectedTab == 1,
                                 onClick = { selectedTab = 1 },
-                                text = { Text("Стиль", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                text = { Text("стиль", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
                                 icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) }
                             )
                             Tab(
                                 selected = selectedTab == 2,
                                 onClick = { selectedTab = 2 },
-                                text = { Text("Отступы", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                text = { Text("отступы", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
                                 icon = { Icon(Icons.Default.LinearScale, contentDescription = null, modifier = Modifier.size(14.dp)) }
                             )
                             Tab(
                                 selected = selectedTab == 3,
                                 onClick = { selectedTab = 3 },
-                                text = { Text("Инфо", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                text = { Text("инфо", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
                                 icon = { Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp)) }
                             )
                         }
@@ -486,13 +486,13 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                             }
                                         }
                                         val msg = if (quality == ExportQuality.TIKTOK_OPTIMIZED) {
-                                            if (selectedUris.size > 1) "Все фото сохранены для TikTok!" else "Фото сохранено для TikTok!"
+                                            if (selectedUris.size > 1) "все фото сохранены для соцсетей!" else "фото сохранено для соцсетей!"
                                         } else {
-                                            if (selectedUris.size > 1) "Все фото сохранены в 100% качестве!" else "Сохранено в 100% качестве!"
+                                            if (selectedUris.size > 1) "все фото сохранены в 100% качестве!" else "сохранено в 100% качестве!"
                                         }
                                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                     } catch (e: Exception) {
-                                        Toast.makeText(context, "Ошибка экспорта: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "ошибка экспорта: ${e.message}", Toast.LENGTH_SHORT).show()
                                     } finally {
                                         isExporting = false
                                         batchProgress = null
@@ -528,8 +528,8 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                     Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFCBD5E1))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Column(horizontalAlignment = Alignment.Start) {
-                                        Text("Оригинал 100%", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                        val countLabel = if (selectedUris.size > 1) "Все фото • Без потерь" else "Без потерь"
+                                        Text("оригинал 100%", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                        val countLabel = if (selectedUris.size > 1) "все фото • без потерь" else "без потерь"
                                         Text(countLabel, fontSize = 9.sp, color = Color(0xFF94A3B8))
                                     }
                                 }
@@ -554,8 +554,8 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                     Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Column(horizontalAlignment = Alignment.Start) {
-                                        Text("Для соцсетей", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                        val countLabel = if (selectedUris.size > 1) "Все фото • 1080p чётко" else "1080p • Чётко"
+                                        Text("для соцсетей", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                        val countLabel = if (selectedUris.size > 1) "все фото • 1080p чётко" else "1080p • чётко"
                                         Text(countLabel, fontSize = 9.sp, color = Color(0xFFC7D2FE))
                                     }
                                 }
@@ -599,7 +599,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                         .align(Alignment.TopEnd)
                         .padding(16.dp)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "Закрыть", tint = Color.White)
+                    Icon(Icons.Default.Close, contentDescription = "закрыть", tint = Color.White)
                 }
             }
         }
@@ -612,7 +612,7 @@ private fun FormatSettings(
     onConfigChange: (FrameConfig) -> Unit
 ) {
     Text(
-        text = "Соотношение сторон холста",
+        text = "соотношение сторон холста",
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
@@ -645,7 +645,7 @@ private fun FormatSettings(
 
     // Text Alignment
     Text(
-        text = "Выравнивание текста",
+        text = "выравнивание текста",
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
@@ -678,7 +678,7 @@ private fun FormatSettings(
 
     val accent = Color(0xFF818CF8)
     SettingSlider(
-        label = "Масштаб кадра в рамке",
+        label = "масштаб кадра в рамке",
         valueText = "${(config.photoScale * 100).toInt()}%",
         value = config.photoScale,
         range = 0.70f..0.95f,
@@ -696,7 +696,7 @@ private fun StyleSettings(
 
     // Typography: Font Family Selection
     Text(
-        text = "Шрифт надписи",
+        text = "шрифт надписи",
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
@@ -729,7 +729,7 @@ private fun StyleSettings(
 
     // Typography: Font Weight Selection
     Text(
-        text = "Начертание (жирность)",
+        text = "начертание (жирность)",
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
@@ -762,7 +762,7 @@ private fun StyleSettings(
 
     // Logo Color Mode
     Text(
-        text = "Цвет логотипа камеры",
+        text = "цвет логотипа",
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
@@ -795,7 +795,7 @@ private fun StyleSettings(
 
     // Sliders
     SettingSlider(
-        label = "Скругление углов",
+        label = "скругление углов",
         valueText = "${config.cornerRadius.toInt()} dp",
         value = config.cornerRadius,
         range = 0f..60f,
@@ -804,7 +804,7 @@ private fun StyleSettings(
     )
 
     SettingSlider(
-        label = "Размытие фона",
+        label = "размытие фона",
         valueText = "${config.blurRadius.toInt()}%",
         value = config.blurRadius,
         range = 10f..60f,
@@ -813,7 +813,7 @@ private fun StyleSettings(
     )
 
     SettingSlider(
-        label = "Глубина тени (Alpha)",
+        label = "непрозрачность тени",
         valueText = "${(config.shadowAlpha * 100).toInt()}%",
         value = config.shadowAlpha,
         range = 0f..0.8f,
@@ -822,7 +822,7 @@ private fun StyleSettings(
     )
 
     SettingSlider(
-        label = "Мягкость размытия тени (Blur)",
+        label = "мягкость размытия тени",
         valueText = "${config.shadowRadius.toInt()} px",
         value = config.shadowRadius,
         range = 0f..90f,
@@ -831,7 +831,7 @@ private fun StyleSettings(
     )
 
     SettingSlider(
-        label = "Рассеивание / Размер тени (Spread)",
+        label = "размер / рассеивание тени",
         valueText = "${config.shadowSpread.toInt()} px",
         value = config.shadowSpread,
         range = 0f..60f,
@@ -840,7 +840,7 @@ private fun StyleSettings(
     )
 
     SettingSlider(
-        label = "Смещение тени вниз",
+        label = "смещение тени вниз",
         valueText = if (config.shadowOffsetY == 0f) "0% (равномерно)" else "${config.shadowOffsetY.toInt()}%",
         value = config.shadowOffsetY,
         range = 0f..80f,
@@ -857,7 +857,7 @@ private fun SpacingSettings(
     val accent = Color(0xFF818CF8)
 
     SettingSlider(
-        label = "Общий масштаб надписи",
+        label = "общий масштаб надписи",
         valueText = String.format(java.util.Locale.US, "%.1fx", config.textMasterScale),
         value = config.textMasterScale,
         range = 0.5f..2.5f,
@@ -866,7 +866,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "Размер логотипа",
+        label = "размер логотипа",
         valueText = String.format(java.util.Locale.US, "%.1fx", config.logoScale),
         value = config.logoScale,
         range = 0.5f..2.5f,
@@ -875,7 +875,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "Размер названия (строка 1)",
+        label = "размер названия камеры",
         valueText = "${config.fontSizeLine1.toInt()} pt",
         value = config.fontSizeLine1,
         range = 16f..64f,
@@ -884,7 +884,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "Размер параметров (строка 2)",
+        label = "размер параметров съемки",
         valueText = "${config.fontSizeLine2.toInt()} pt",
         value = config.fontSizeLine2,
         range = 12f..48f,
@@ -893,7 +893,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "Высота логотипа (смещение Y)",
+        label = "смещение логотипа по вертикали",
         valueText = if (config.logoOffsetY == 0f) "0 (оптический центр)" else if (config.logoOffsetY > 0) "+${config.logoOffsetY.toInt()} dp" else "${config.logoOffsetY.toInt()} dp",
         value = config.logoOffsetY,
         range = -25f..25f,
@@ -902,7 +902,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "Отступ логотипа от названия",
+        label = "отступ логотипа от текста",
         valueText = "${config.logoGap.toInt()} dp",
         value = config.logoGap,
         range = 4f..60f,
@@ -911,7 +911,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "Расстояние между строками",
+        label = "расстояние между строками",
         valueText = "${config.lineSpacing.toInt()} dp",
         value = config.lineSpacing,
         range = 10f..60f,
@@ -920,7 +920,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "Положение текста по вертикали",
+        label = "положение текста по вертикали",
         valueText = if (config.footerVerticalOffset > 0) "+${config.footerVerticalOffset.toInt()}%" else "${config.footerVerticalOffset.toInt()}%",
         value = config.footerVerticalOffset,
         range = -35f..35f,
@@ -929,7 +929,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "Смещение текста по горизонтали",
+        label = "смещение текста по горизонтали",
         valueText = if (config.textHorizontalOffset == 0f) "0" else "${config.textHorizontalOffset.toInt()} dp",
         value = config.textHorizontalOffset,
         range = -40f..40f,
@@ -938,7 +938,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "Межбуквенный интервал (трекинг)",
+        label = "межбуквенный интервал",
         valueText = String.format("%.2f", config.letterSpacing),
         value = config.letterSpacing,
         range = 0f..0.15f,
@@ -998,7 +998,7 @@ private fun MetaSettings(
     onConfigChange: (FrameConfig) -> Unit
 ) {
     Text(
-        text = "Бренд камеры (официальный логотип)",
+        text = "бренд камеры",
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
@@ -1032,7 +1032,7 @@ private fun MetaSettings(
     OutlinedTextField(
         value = exif.model,
         onValueChange = { onExifChange(exif.copy(model = it)) },
-        label = { Text("Модель камеры", fontSize = 12.sp) },
+        label = { Text("модель камеры", fontSize = 12.sp) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
         colors = OutlinedTextFieldDefaults.colors(
@@ -1047,11 +1047,11 @@ private fun MetaSettings(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    MetaToggle("Показывать логотип", config.showLogo) { onConfigChange(config.copy(showLogo = it)) }
-    MetaToggle("Показывать модель камеры", config.showModel) { onConfigChange(config.copy(showModel = it)) }
-    MetaToggle("Показывать параметры (ISO, выдержка, f-stop)", config.showParams) { onConfigChange(config.copy(showParams = it)) }
-    MetaToggle("Показывать объектив", config.showLens) { onConfigChange(config.copy(showLens = it)) }
-    MetaToggle("Показывать дату съёмки", config.showDate) { onConfigChange(config.copy(showDate = it)) }
+    MetaToggle("показывать логотип", config.showLogo) { onConfigChange(config.copy(showLogo = it)) }
+    MetaToggle("показывать модель камеры", config.showModel) { onConfigChange(config.copy(showModel = it)) }
+    MetaToggle("показывать параметры (iso, выдержка, f-stop)", config.showParams) { onConfigChange(config.copy(showParams = it)) }
+    MetaToggle("показывать объектив", config.showLens) { onConfigChange(config.copy(showLens = it)) }
+    MetaToggle("показывать дату съёмки", config.showDate) { onConfigChange(config.copy(showDate = it)) }
 }
 
 @Composable
@@ -1144,13 +1144,13 @@ private fun SavedGalleryModal(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Галерея работ (${savedItems.size})",
+                    text = "галерея работ (${savedItems.size})",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Закрыть", tint = Color.White)
+                    Icon(Icons.Default.Close, contentDescription = "закрыть", tint = Color.White)
                 }
             }
 
@@ -1168,7 +1168,7 @@ private fun SavedGalleryModal(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Пока нет сохранённых работ в галерее",
+                        text = "пока нет сохранённых работ в галерее",
                         fontSize = 14.sp,
                         color = Color(0xFF94A3B8)
                     )
@@ -1218,13 +1218,13 @@ private fun SavedGalleryModal(
                                                 putExtra(Intent.EXTRA_STREAM, item.uri)
                                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                             }
-                                            context.startActivity(Intent.createChooser(shareIntent, "Поделиться кадром"))
+                                            context.startActivity(Intent.createChooser(shareIntent, "поделиться"))
                                         },
                                         modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
                                             Icons.Default.Share,
-                                            contentDescription = "Поделиться",
+                                            contentDescription = "поделиться",
                                             tint = Color(0xFF818CF8),
                                             modifier = Modifier.size(16.dp)
                                         )

@@ -8,6 +8,7 @@ enum class CameraBrand(
     val brandHexColor: String? = null
 ) {
     SONY("SONY", R.drawable.brand_sony, "#FF6600"),
+    SONY_ALPHA("SONY α", R.drawable.ic_brand_sony_alpha, "#FF6600"),
     NIKON("Nikon", R.drawable.brand_nikon, "#FFE100"),
     CANON("Canon", R.drawable.brand_canon, "#CC0000"),
     FUJIFILM("FUJIFILM", R.drawable.brand_fujifilm, "#E60012"),
@@ -15,20 +16,26 @@ enum class CameraBrand(
     HASSELBLAD("HASSELBLAD", R.drawable.brand_hasselblad, "#FFFFFF"),
     LUMIX("LUMIX", R.drawable.brand_lumix, "#E60012"),
     APPLE("Apple", R.drawable.brand_apple, "#FFFFFF"),
-    OTHER("Камера", null, null);
+    OTHER("камера", null, null);
 
     companion object {
-        fun detect(make: String): CameraBrand {
-            val lower = make.lowercase()
+        fun detect(make: String, model: String = ""): CameraBrand {
+            val combined = "$make $model".lowercase()
             return when {
-                "sony" in lower -> SONY
-                "nikon" in lower -> NIKON
-                "canon" in lower -> CANON
-                "fuji" in lower -> FUJIFILM
-                "leica" in lower -> LEICA
-                "hasselblad" in lower -> HASSELBLAD
-                "lumix" in lower || "panasonic" in lower -> LUMIX
-                "apple" in lower -> APPLE
+                "sony" in combined -> {
+                    if ("ilce" in combined || "alpha" in combined || "α" in combined || "zv-e" in combined) {
+                        SONY_ALPHA
+                    } else {
+                        SONY
+                    }
+                }
+                "nikon" in combined -> NIKON
+                "canon" in combined -> CANON
+                "fuji" in combined -> FUJIFILM
+                "leica" in combined -> LEICA
+                "hasselblad" in combined -> HASSELBLAD
+                "lumix" in combined || "panasonic" in combined -> LUMIX
+                "apple" in combined -> APPLE
                 else -> OTHER
             }
         }
@@ -41,29 +48,29 @@ enum class CanvasRatio(val label: String, val widthRatio: Float, val heightRatio
     RATIO_1_1("1:1", 1f, 1f),
     RATIO_3_4("3:4", 3f, 4f),
     RATIO_16_9("16:9", 16f, 9f),
-    ORIGINAL("Оригинал", 0f, 0f)
+    ORIGINAL("оригинал", 0f, 0f)
 }
 
 enum class LogoColorMode(val label: String) {
-    WHITE("Белый"),
-    BLACK("Чёрный"),
-    BRAND("Бренд"),
-    MATCH_TEXT("Текст")
+    WHITE("белый"),
+    BLACK("чёрный"),
+    BRAND("бренд"),
+    MATCH_TEXT("текст")
 }
 
 enum class FontOption(val label: String, val assetPath: String?) {
-    INTER("Inter", "fonts/inter.ttf"),
-    SPACE_GROTESK("Space Grotesk", "fonts/spacegrotesk.ttf"),
-    PLAYFAIR("Playfair", "fonts/playfair_regular.ttf"),
-    JETBRAINS("JetBrains Mono", "fonts/jetbrains_mono_regular.ttf"),
-    SYSTEM("Системный", null)
+    INTER("inter", "fonts/inter.ttf"),
+    SPACE_GROTESK("space grotesk", "fonts/spacegrotesk.ttf"),
+    PLAYFAIR("playfair", "fonts/playfair_regular.ttf"),
+    JETBRAINS("jetbrains mono", "fonts/jetbrains_mono_regular.ttf"),
+    SYSTEM("системный", null)
 }
 
 enum class CustomFontWeight(val label: String, val weightValue: Int) {
-    REGULAR("Regular", 400),
-    MEDIUM("Medium", 500),
-    SEMIBOLD("SemiBold", 600),
-    BOLD("Bold", 700)
+    REGULAR("regular", 400),
+    MEDIUM("medium", 500),
+    SEMIBOLD("semibold", 600),
+    BOLD("bold", 700)
 }
 
 data class ExifData(
@@ -86,14 +93,14 @@ data class ExifData(
 }
 
 enum class TextAlignment(val label: String) {
-    CENTER("По центру"),
-    LEFT("Слева"),
-    SPLIT("По краям")
+    CENTER("по центру"),
+    LEFT("слева"),
+    SPLIT("по краям")
 }
 
 enum class ExportQuality(val label: String, val badge: String) {
-    ORIGINAL_100("Полное качество", "100% без потерь"),
-    TIKTOK_OPTIMIZED("Для TikTok", "1080p чётко")
+    ORIGINAL_100("оригинал 100%", "без потерь"),
+    TIKTOK_OPTIMIZED("для соцсетей", "1080p • чётко")
 }
 
 data class FrameConfig(
@@ -104,7 +111,7 @@ data class FrameConfig(
     val shadowOffsetY: Float = 0f,
     val blurRadius: Float = 42f,
     val blurDimming: Float = 0.12f,
-    val photoScale: Float = 0.86f,
+    val photoScale: Float = 0.89f,
     val showLogo: Boolean = true,
     val showModel: Boolean = true,
     val showParams: Boolean = true,
@@ -118,8 +125,8 @@ data class FrameConfig(
     val lineSpacing: Float = 32f,
     val footerVerticalOffset: Float = 0f,
     val letterSpacing: Float = 0.02f,
-    val fontSizeLine1: Float = 36f,
-    val fontSizeLine2: Float = 24f,
+    val fontSizeLine1: Float = 34f,
+    val fontSizeLine2: Float = 22f,
     val logoOffsetY: Float = 0f,
     val shadowSpread: Float = 8f,
     val textHorizontalOffset: Float = 0f,

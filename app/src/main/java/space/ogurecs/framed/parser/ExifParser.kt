@@ -56,7 +56,7 @@ object ExifParser {
         val width = exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0)
         val height = exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0)
 
-        val brand = CameraBrand.detect(make)
+        val brand = CameraBrand.detect(make, model)
         val cleanModel = CameraModelNormalizer.normalize(brand, make, model)
 
         return ExifData(
@@ -93,35 +93,36 @@ object CameraModelNormalizer {
         if (trimmed.isBlank()) return ""
 
         return when (brand) {
-            CameraBrand.SONY -> {
+            CameraBrand.SONY, CameraBrand.SONY_ALPHA -> {
                 val clean = trimmed.replace(Regex("(?i)^sony\\s+"), "")
+                val isAlphaBrand = brand == CameraBrand.SONY_ALPHA
                 when {
-                    clean.equals("ILCE-1", true) -> "Alpha 1"
-                    clean.equals("ILCE-9M3", true) -> "Alpha 9 III"
-                    clean.equals("ILCE-9M2", true) -> "Alpha 9 II"
-                    clean.equals("ILCE-9", true) -> "Alpha 9"
-                    clean.equals("ILCE-7RM5", true) -> "Alpha 7R V"
-                    clean.equals("ILCE-7RM4", true) -> "Alpha 7R IV"
-                    clean.equals("ILCE-7RM3", true) -> "Alpha 7R III"
-                    clean.equals("ILCE-7RM2", true) -> "Alpha 7R II"
-                    clean.equals("ILCE-7R", true) -> "Alpha 7R"
-                    clean.equals("ILCE-7SM3", true) -> "Alpha 7S III"
-                    clean.equals("ILCE-7SM2", true) -> "Alpha 7S II"
-                    clean.equals("ILCE-7S", true) -> "Alpha 7S"
-                    clean.equals("ILCE-7M4", true) -> "Alpha 7 IV"
-                    clean.equals("ILCE-7M3", true) -> "Alpha 7 III"
-                    clean.equals("ILCE-7M2", true) -> "Alpha 7 II"
-                    clean.equals("ILCE-7", true) -> "Alpha 7"
-                    clean.equals("ILCE-7CR", true) -> "Alpha 7CR"
-                    clean.equals("ILCE-7CM2", true) -> "Alpha 7C II"
-                    clean.equals("ILCE-7C", true) -> "Alpha 7C"
-                    clean.equals("ILCE-6700", true) -> "Alpha 6700"
-                    clean.equals("ILCE-6600", true) -> "Alpha 6600"
-                    clean.equals("ILCE-6500", true) -> "Alpha 6500"
-                    clean.equals("ILCE-6400", true) -> "Alpha 6400"
-                    clean.equals("ILCE-6300", true) -> "Alpha 6300"
-                    clean.equals("ILCE-6100", true) -> "Alpha 6100"
-                    clean.equals("ILCE-6000", true) -> "Alpha 6000"
+                    clean.equals("ILCE-1", true) -> if (isAlphaBrand) "1" else "α1"
+                    clean.equals("ILCE-9M3", true) -> if (isAlphaBrand) "9 III" else "α9 III"
+                    clean.equals("ILCE-9M2", true) -> if (isAlphaBrand) "9 II" else "α9 II"
+                    clean.equals("ILCE-9", true) -> if (isAlphaBrand) "9" else "α9"
+                    clean.equals("ILCE-7RM5", true) -> if (isAlphaBrand) "7R V" else "α7R V"
+                    clean.equals("ILCE-7RM4", true) -> if (isAlphaBrand) "7R IV" else "α7R IV"
+                    clean.equals("ILCE-7RM3", true) -> if (isAlphaBrand) "7R III" else "α7R III"
+                    clean.equals("ILCE-7RM2", true) -> if (isAlphaBrand) "7R II" else "α7R II"
+                    clean.equals("ILCE-7R", true) -> if (isAlphaBrand) "7R" else "α7R"
+                    clean.equals("ILCE-7SM3", true) -> if (isAlphaBrand) "7S III" else "α7S III"
+                    clean.equals("ILCE-7SM2", true) -> if (isAlphaBrand) "7S II" else "α7S II"
+                    clean.equals("ILCE-7S", true) -> if (isAlphaBrand) "7S" else "α7S"
+                    clean.equals("ILCE-7M4", true) -> if (isAlphaBrand) "7 IV" else "α7 IV"
+                    clean.equals("ILCE-7M3", true) -> if (isAlphaBrand) "7 III" else "α7 III"
+                    clean.equals("ILCE-7M2", true) -> if (isAlphaBrand) "7 II" else "α7 II"
+                    clean.equals("ILCE-7", true) -> if (isAlphaBrand) "7" else "α7"
+                    clean.equals("ILCE-7CR", true) -> if (isAlphaBrand) "7CR" else "α7CR"
+                    clean.equals("ILCE-7CM2", true) -> if (isAlphaBrand) "7C II" else "α7C II"
+                    clean.equals("ILCE-7C", true) -> if (isAlphaBrand) "7C" else "α7C"
+                    clean.equals("ILCE-6700", true) -> if (isAlphaBrand) "6700" else "α6700"
+                    clean.equals("ILCE-6600", true) -> if (isAlphaBrand) "6600" else "α6600"
+                    clean.equals("ILCE-6500", true) -> if (isAlphaBrand) "6500" else "α6500"
+                    clean.equals("ILCE-6400", true) -> if (isAlphaBrand) "6400" else "α6400"
+                    clean.equals("ILCE-6300", true) -> if (isAlphaBrand) "6300" else "α6300"
+                    clean.equals("ILCE-6100", true) -> if (isAlphaBrand) "6100" else "α6100"
+                    clean.equals("ILCE-6000", true) -> if (isAlphaBrand) "6000" else "α6000"
                     clean.equals("ZV-E1", true) -> "ZV-E1"
                     clean.equals("ZV-E10", true) -> "ZV-E10"
                     clean.equals("ZV-E10M2", true) -> "ZV-E10 II"
@@ -133,7 +134,7 @@ object CameraModelNormalizer {
                         }
                         "RX100 $roman"
                     }
-                    clean.startsWith("ILCE-", true) -> "Alpha " + clean.removePrefix("ILCE-")
+                    clean.startsWith("ILCE-", true) -> if (isAlphaBrand) clean.removePrefix("ILCE-") else "α" + clean.removePrefix("ILCE-")
                     else -> clean
                 }
             }

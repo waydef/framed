@@ -40,7 +40,8 @@ object FrameCompositor {
     ): Bitmap {
         val srcW = source.width.toFloat()
         val srcH = source.height.toFloat()
-        val refDim = min(srcW, srcH)
+        val baseAspect = max(srcW, srcH) / max(1f, min(srcW, srcH))
+        val refDim = min(srcW, srcH) * minOf(1.0f, baseAspect / 1.5f)
 
         val titleSize = refDim * (config.fontSizeLine1 / 1000f) * config.textMasterScale
         val paramsSize = refDim * (config.fontSizeLine2 / 1000f) * config.textMasterScale
@@ -555,8 +556,8 @@ object FrameCompositor {
         source.getPixels(pixels, 0, w, 0, 0, w, h)
         val outPixels = IntArray(w * h)
 
-        val cW = 1.40f
-        val nW = -0.10f
+        val cW = 1.35f
+        val nW = -0.0875f
 
         for (y in 0 until h) {
             val yOffset = y * w
