@@ -42,8 +42,8 @@ object FrameCompositor {
         val srcH = source.height.toFloat()
         val refDim = min(srcW, srcH)
 
-        val titleSize = refDim * (config.fontSizeLine1 / 1000f)
-        val paramsSize = refDim * (config.fontSizeLine2 / 1000f)
+        val titleSize = refDim * (config.fontSizeLine1 / 1000f) * config.textMasterScale
+        val paramsSize = refDim * (config.fontSizeLine2 / 1000f) * config.textMasterScale
         val lineSpacing = titleSize * (config.lineSpacing / 32f) * 0.65f
 
         val brandRes = exif.brand.iconRes
@@ -294,7 +294,7 @@ object FrameCompositor {
                         val drawable = ContextCompat.getDrawable(context, brandRes)
                         if (drawable != null) {
                             applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
-                            val logoH = (capHeight * 1.05f).roundToInt()
+                            val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
                             val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
                             val logoW = (logoH * aspect).roundToInt()
                             val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
@@ -335,7 +335,7 @@ object FrameCompositor {
                         val drawable = ContextCompat.getDrawable(context, brandRes)
                         if (drawable != null) {
                             applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
-                            val logoH = (capHeight * 1.05f).roundToInt()
+                            val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
                             val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
                             val logoW = (logoH * aspect).roundToInt()
                             val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
@@ -366,7 +366,7 @@ object FrameCompositor {
                         val drawable = ContextCompat.getDrawable(context, brandRes)
                         if (drawable != null) {
                             applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
-                            val logoH = (capHeight * 1.05f).roundToInt()
+                            val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
                             val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
                             val logoW = (logoH * aspect).roundToInt()
                             val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
@@ -405,7 +405,7 @@ object FrameCompositor {
                         val drawable = ContextCompat.getDrawable(context, brandRes)
                         if (drawable != null) {
                             applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
-                            val logoH = (capHeight * 1.05f).roundToInt()
+                            val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
                             val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
                             val logoW = (logoH * aspect).roundToInt()
                             val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
@@ -484,7 +484,7 @@ object FrameCompositor {
 
         if (quality == ExportQuality.TIKTOK_OPTIMIZED) {
             prefix = "framed_tiktok"
-            compressQuality = 92
+            compressQuality = 96
 
             // TikTok photo mode optimal screen dimensions (1080p width, max 1920p height)
             val origW = bitmap.width
@@ -555,8 +555,8 @@ object FrameCompositor {
         source.getPixels(pixels, 0, w, 0, 0, w, h)
         val outPixels = IntArray(w * h)
 
-        val cW = 1.30f
-        val nW = -0.075f
+        val cW = 1.40f
+        val nW = -0.10f
 
         for (y in 0 until h) {
             val yOffset = y * w

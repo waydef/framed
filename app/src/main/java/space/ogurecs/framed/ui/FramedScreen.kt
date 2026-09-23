@@ -300,7 +300,7 @@ fun FramedScreen() {
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
                 contentAlignment = Alignment.Center
             ) {
                 if (fullBitmap == null) {
@@ -365,17 +365,14 @@ fun FramedScreen() {
                     CircularProgressIndicator(color = accentColor)
                 } else {
                     previewBitmap?.let { bmp ->
-                        Card(
-                            shape = RoundedCornerShape(10.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
-                        ) {
-                            Image(
-                                bitmap = bmp.asImageBitmap(),
-                                contentDescription = "Preview",
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = "Preview",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(8.dp))
+                        )
                     }
                 }
             }
@@ -432,7 +429,7 @@ fun FramedScreen() {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(220.dp)
+                                .height(190.dp)
                                 .verticalScroll(rememberScrollState())
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {
@@ -480,9 +477,9 @@ fun FramedScreen() {
                                             }
                                         }
                                         val msg = if (quality == ExportQuality.TIKTOK_OPTIMIZED) {
-                                            if (selectedUris.size > 1) "Все ${selectedUris.size} фото сохранены для TikTok!" else "Фото сохранено для TikTok!"
+                                            if (selectedUris.size > 1) "Все фото сохранены для TikTok!" else "Фото сохранено для TikTok!"
                                         } else {
-                                            if (selectedUris.size > 1) "Все ${selectedUris.size} фото сохранены в 100% качестве!" else "Сохранено в 100% качестве!"
+                                            if (selectedUris.size > 1) "Все фото сохранены в 100% качестве!" else "Сохранено в 100% качестве!"
                                         }
                                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                     } catch (e: Exception) {
@@ -523,13 +520,13 @@ fun FramedScreen() {
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Column(horizontalAlignment = Alignment.Start) {
                                         Text("Оригинал 100%", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                        val countLabel = if (selectedUris.size > 1) "все (${selectedUris.size})" else "без потерь"
+                                        val countLabel = if (selectedUris.size > 1) "Все фото • Без потерь" else "Без потерь"
                                         Text(countLabel, fontSize = 9.sp, color = Color(0xFF94A3B8))
                                     }
                                 }
                             }
 
-                            // 2. Export for Social Media / TikTok (1080p, smart unsharp sharpening, optimal 92% JPEG)
+                            // 2. Export for Social Media / TikTok (1080p, smart unsharp sharpening, optimal 96% JPEG)
                             Button(
                                 onClick = { runExport(ExportQuality.TIKTOK_OPTIMIZED) },
                                 enabled = !isExporting && fullBitmap != null,
@@ -545,11 +542,11 @@ fun FramedScreen() {
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(batchProgress?.let { "${it.first}/${it.second}" } ?: "...", fontSize = 11.sp)
                                 } else {
-                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Column(horizontalAlignment = Alignment.Start) {
-                                        Text("Для соцсетей (TT)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                        val countLabel = if (selectedUris.size > 1) "все (${selectedUris.size}) • 1080p" else "1080p • чётко"
+                                        Text("Для соцсетей", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                        val countLabel = if (selectedUris.size > 1) "Все фото • 1080p чётко" else "1080p • Чётко"
                                         Text(countLabel, fontSize = 9.sp, color = Color(0xFFC7D2FE))
                                     }
                                 }
@@ -849,6 +846,24 @@ private fun SpacingSettings(
     onConfigChange: (FrameConfig) -> Unit
 ) {
     val accent = Color(0xFF818CF8)
+
+    SettingSlider(
+        label = "Общий масштаб надписи",
+        valueText = String.format(java.util.Locale.US, "%.1fx", config.textMasterScale),
+        value = config.textMasterScale,
+        range = 0.5f..2.5f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(textMasterScale = it)) }
+    )
+
+    SettingSlider(
+        label = "Размер логотипа",
+        valueText = String.format(java.util.Locale.US, "%.1fx", config.logoScale),
+        value = config.logoScale,
+        range = 0.5f..2.5f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(logoScale = it)) }
+    )
 
     SettingSlider(
         label = "Размер названия (строка 1)",

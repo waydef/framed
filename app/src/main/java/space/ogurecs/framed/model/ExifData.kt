@@ -118,9 +118,12 @@ data class FrameConfig(
     val lineSpacing: Float = 32f,
     val footerVerticalOffset: Float = 0f,
     val letterSpacing: Float = 0.02f,
-    val fontSizeLine1: Float = 32f,
-    val fontSizeLine2: Float = 22f,
+    val fontSizeLine1: Float = 36f,
+    val fontSizeLine2: Float = 24f,
     val logoOffsetY: Float = 0f,
     val shadowSpread: Float = 8f,
-    val textHorizontalOffset: Float = 0f
+    val textHorizontalOffset: Float = 0f,
+    val textMasterScale: Float = 1.0f,
+    val logoScale: Float = 1.0f
 )
+

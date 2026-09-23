@@ -34,11 +34,31 @@ class FramedModelTest {
     @Test
     fun testFrameConfigDefaults() {
         val config = FrameConfig()
-        assertEquals(32f, config.fontSizeLine1)
-        assertEquals(22f, config.fontSizeLine2)
+        assertEquals(36f, config.fontSizeLine1)
+        assertEquals(24f, config.fontSizeLine2)
+        assertEquals(1.0f, config.textMasterScale)
+        assertEquals(1.0f, config.logoScale)
         assertEquals(0f, config.logoOffsetY)
         assertEquals(8f, config.shadowSpread)
         assertEquals(CanvasRatio.RATIO_3_4, config.ratio)
+    }
+
+    @Test
+    fun testCameraModelNormalizer() {
+        val normalizedSony = space.ogurecs.framed.parser.CameraModelNormalizer.normalize(
+            CameraBrand.SONY, "Sony", "ILCE-6600"
+        )
+        assertEquals("Alpha 6600", normalizedSony)
+
+        val normalizedNikon = space.ogurecs.framed.parser.CameraModelNormalizer.normalize(
+            CameraBrand.NIKON, "NIKON", "Z 6_2"
+        )
+        assertEquals("Z 6 II", normalizedNikon)
+
+        val normalizedApple = space.ogurecs.framed.parser.CameraModelNormalizer.normalize(
+            CameraBrand.APPLE, "Apple", "iPhone15,2"
+        )
+        assertEquals("iPhone 14 Pro", normalizedApple)
     }
 
     @Test
