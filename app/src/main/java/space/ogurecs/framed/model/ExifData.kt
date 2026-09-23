@@ -2,16 +2,20 @@ package space.ogurecs.framed.model
 
 import space.ogurecs.framed.R
 
-enum class CameraBrand(val displayName: String, val iconRes: Int?) {
-    SONY("SONY", R.drawable.ic_brand_sony),
-    NIKON("Nikon", R.drawable.ic_brand_nikon),
-    CANON("Canon", R.drawable.ic_brand_canon),
-    FUJIFILM("FUJIFILM", R.drawable.ic_brand_fujifilm),
-    LEICA("Leica", R.drawable.ic_brand_leica),
-    HASSELBLAD("HASSELBLAD", R.drawable.ic_brand_hasselblad),
-    LUMIX("LUMIX", R.drawable.ic_brand_lumix),
-    APPLE("Apple", R.drawable.ic_brand_apple),
-    OTHER("Camera", null);
+enum class CameraBrand(
+    val displayName: String,
+    val iconRes: Int?,
+    val brandHexColor: String? = null
+) {
+    SONY("SONY", R.drawable.brand_sony, "#FF6600"),
+    NIKON("Nikon", R.drawable.brand_nikon, "#FFE100"),
+    CANON("Canon", R.drawable.brand_canon, "#CC0000"),
+    FUJIFILM("FUJIFILM", R.drawable.brand_fujifilm, "#E60012"),
+    LEICA("Leica", R.drawable.brand_leica, "#ED1C24"),
+    HASSELBLAD("HASSELBLAD", R.drawable.brand_hasselblad, "#FFFFFF"),
+    LUMIX("LUMIX", R.drawable.brand_lumix, "#E60012"),
+    APPLE("Apple", R.drawable.brand_apple, "#FFFFFF"),
+    OTHER("Камера", null, null);
 
     companion object {
         fun detect(make: String): CameraBrand {
@@ -38,6 +42,28 @@ enum class CanvasRatio(val label: String, val widthRatio: Float, val heightRatio
     RATIO_3_4("3:4", 3f, 4f),
     RATIO_16_9("16:9", 16f, 9f),
     ORIGINAL("Оригинал", 0f, 0f)
+}
+
+enum class LogoColorMode(val label: String) {
+    WHITE("Белый"),
+    BLACK("Чёрный"),
+    BRAND("Бренд"),
+    MATCH_TEXT("Текст")
+}
+
+enum class FontOption(val label: String, val assetPath: String?) {
+    INTER("Inter", "fonts/inter.ttf"),
+    SPACE_GROTESK("Space Grotesk", "fonts/spacegrotesk.ttf"),
+    PLAYFAIR("Playfair", "fonts/playfair_regular.ttf"),
+    JETBRAINS("JetBrains Mono", "fonts/jetbrains_mono_regular.ttf"),
+    SYSTEM("Системный", null)
+}
+
+enum class CustomFontWeight(val label: String, val weightValue: Int) {
+    REGULAR("Regular", 400),
+    MEDIUM("Medium", 500),
+    SEMIBOLD("SemiBold", 600),
+    BOLD("Bold", 700)
 }
 
 data class ExifData(
@@ -71,5 +97,8 @@ data class FrameConfig(
     val showModel: Boolean = true,
     val showParams: Boolean = true,
     val showLens: Boolean = false,
-    val showDate: Boolean = false
+    val showDate: Boolean = false,
+    val logoColorMode: LogoColorMode = LogoColorMode.WHITE,
+    val fontOption: FontOption = FontOption.INTER,
+    val fontWeight: CustomFontWeight = CustomFontWeight.MEDIUM
 )

@@ -174,6 +174,30 @@ object FrameCompositor {
         }
     }
 
+    private val typefaceCache = mutableMapOf<String, Typeface>()
+
+    private fun getTypeface(context: Context, option: space.ogurecs.framed.model.FontOption, weight: space.ogurecs.framed.model.CustomFontWeight): Typeface {
+        val key = "${option.name}_${weight.name}"
+        return typefaceCache.getOrPut(key) {
+            try {
+                if (option.assetPath != null) {
+                    val base = Typeface.createFromAsset(context.assets, option.assetPath)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        Typeface.create(base, weight.weightValue, false)
+                    } else {
+                        val style = if (weight.weightValue >= 600) Typeface.BOLD else Typeface.NORMAL
+                        Typeface.create(base, style)
+                    }
+                } else {
+                    val style = if (weight.weightValue >= 600) Typeface.BOLD else Typeface.NORMAL
+                    Typeface.create(Typeface.SANS_SERIF, style)
+                }
+            } catch (e: Exception) {
+                Typeface.DEFAULT
+            }
+        }
+    }
+
     private fun drawMetadataFooter(
         context: Context,
         canvas: Canvas,
@@ -202,14 +226,35 @@ object FrameCompositor {
         val topY = centerY - lineSpacing * 0.5f
 
         if (hasLogo) {
-            val drawable = ContextCompat.getDrawable(context, brandRes!!)
+            val drawable = ContextCompat.getDrawable(context, brandRes)
             if (drawable != null) {
                 val logoH = (titleSize * 1.15f).roundToInt()
                 val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
                 val logoW = (logoH * aspect).roundToInt()
 
+                val logoColor: Int? = when (config.logoColorMode) {
+                    space.ogurecs.framed.model.LogoColorMode.WHITE -> Color.WHITE
+                    space.ogurecs.framed.model.LogoColorMode.BLACK -> Color.BLACK
+                    space.ogurecs.framed.model.LogoColorMode.MATCH_TEXT -> Color.WHITE
+                    space.ogurecs.framed.model.LogoColorMode.BRAND -> when (exif.brand) {
+                        space.ogurecs.framed.model.CameraBrand.CANON -> Color.parseColor("#CC0000")
+                        space.ogurecs.framed.model.CameraBrand.SONY -> Color.parseColor("#FF6600")
+                        space.ogurecs.framed.model.CameraBrand.NIKON -> Color.parseColor("#FFE100")
+                        space.ogurecs.framed.model.CameraBrand.LUMIX -> Color.parseColor("#E60012")
+                        space.ogurecs.framed.model.CameraBrand.LEICA -> null // Preserve authentic multi-color red dot & cursive!
+                        space.ogurecs.framed.model.CameraBrand.FUJIFILM -> null // Preserve authentic red dot accent!
+                        else -> Color.WHITE
+                    }
+                }
+
+                if (logoColor != null) {
+                    drawable.colorFilter = PorterDuffColorFilter(logoColor, PorterDuff.Mode.SRC_IN)
+                } else {
+                    drawable.clearColorFilter()
+                }
+
                 if (modelText.isNotBlank()) {
-                    textPaint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+                    textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
                     textPaint.textSize = titleSize
                     val modelW = textPaint.measureText(modelText)
                     val gap = refDim * 0.02f
@@ -219,7 +264,6 @@ object FrameCompositor {
                     val logoTop = (topY - logoH * 0.75f).roundToInt()
 
                     drawable.setBounds(startX.roundToInt(), logoTop, (startX + logoW).roundToInt(), logoTop + logoH)
-                    drawable.colorFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN)
                     drawable.draw(canvas)
 
                     textPaint.textAlign = Paint.Align.LEFT
@@ -228,12 +272,11 @@ object FrameCompositor {
                     val startX = (cw - logoW) / 2f
                     val logoTop = (topY - logoH * 0.75f).roundToInt()
                     drawable.setBounds(startX.roundToInt(), logoTop, (startX + logoW).roundToInt(), logoTop + logoH)
-                    drawable.colorFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN)
                     drawable.draw(canvas)
                 }
             }
         } else if (brandName.isNotBlank() || modelText.isNotBlank()) {
-            textPaint.typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
             textPaint.textSize = titleSize
             textPaint.textAlign = Paint.Align.CENTER
             val combined = listOf(brandName, modelText).filter { it.isNotBlank() }.joinToString("  ")
@@ -243,7 +286,12 @@ object FrameCompositor {
         // Bottom line: Parameters
         if (config.showParams) {
             val bottomY = centerY + lineSpacing * 0.95f
-            textPaint.typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            val paramsWeight = if (config.fontWeight == space.ogurecs.framed.model.CustomFontWeight.BOLD) {
+                space.ogurecs.framed.model.CustomFontWeight.MEDIUM
+            } else {
+                space.ogurecs.framed.model.CustomFontWeight.REGULAR
+            }
+            textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
             textPaint.textSize = paramsSize
             textPaint.textAlign = Paint.Align.CENTER
             textPaint.color = Color.argb(235, 255, 255, 255)
