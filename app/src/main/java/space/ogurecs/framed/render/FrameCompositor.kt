@@ -3,6 +3,7 @@ package space.ogurecs.framed.render
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -20,6 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import space.ogurecs.framed.model.CanvasRatio
 import space.ogurecs.framed.model.ExifData
+import space.ogurecs.framed.model.ExportQuality
 import space.ogurecs.framed.model.FrameConfig
 import java.io.File
 import java.io.FileOutputStream
@@ -38,6 +40,39 @@ object FrameCompositor {
     ): Bitmap {
         val srcW = source.width.toFloat()
         val srcH = source.height.toFloat()
+        val refDim = min(srcW, srcH)
+
+        val titleSize = refDim * (config.fontSizeLine1 / 1000f)
+        val paramsSize = refDim * (config.fontSizeLine2 / 1000f)
+        val lineSpacing = titleSize * (config.lineSpacing / 32f) * 0.65f
+
+        val brandRes = exif.brand.iconRes
+        val modelText = if (config.showModel) exif.model else ""
+        val brandName = if (brandRes == null && config.showLogo) exif.brand.displayName else ""
+        val hasLogo = config.showLogo && brandRes != null
+        val hasLine1 = hasLogo || brandName.isNotBlank() || modelText.isNotBlank()
+
+        val paramsList = mutableListOf<String>()
+        if (config.showParams) {
+            if (exif.formattedParams.isNotBlank()) paramsList.add(exif.formattedParams)
+            if (config.showLens && exif.lens.isNotBlank()) paramsList.add(exif.lens)
+            if (config.showDate && exif.dateTime.isNotBlank()) paramsList.add(exif.dateTime)
+        }
+        val paramsText = paramsList.joinToString("   ")
+        val hasLine2 = paramsText.isNotBlank()
+
+        val footerHeight = when {
+            hasLine1 && hasLine2 -> titleSize + lineSpacing + paramsSize
+            hasLine1 -> titleSize
+            hasLine2 -> paramsSize
+            else -> 0f
+        }
+
+        val baseGap = if (footerHeight > 0f) refDim * 0.045f else 0f
+        val gapBelowPhoto = if (footerHeight > 0f) max(0f, baseGap + refDim * (config.footerVerticalOffset / 200f)) else 0f
+
+        val totalContentW = srcW
+        val totalContentH = srcH + gapBelowPhoto + footerHeight
 
         val targetRatio = when (config.ratio) {
             CanvasRatio.RATIO_4_5 -> 4f / 5f
@@ -45,35 +80,22 @@ object FrameCompositor {
             CanvasRatio.RATIO_1_1 -> 1f
             CanvasRatio.RATIO_3_4 -> 3f / 4f
             CanvasRatio.RATIO_16_9 -> 16f / 9f
-            CanvasRatio.ORIGINAL -> srcW / srcH
+            CanvasRatio.ORIGINAL -> totalContentW / totalContentH
         }
 
-        // Calculate canvas dimensions keeping source at full 100% native resolution
         val scale = config.photoScale.coerceIn(0.6f, 0.95f)
-        val footerSpaceRatio = 0.14f
+        val slotW = totalContentW / scale
+        val slotH = totalContentH / scale
 
-        val photoSlotW: Float
-        val photoSlotH: Float
         val canvasW: Int
         val canvasH: Int
 
-        val availableHeightRatio = 1f - footerSpaceRatio
-        val maxSlotRatio = targetRatio / availableHeightRatio
-
-        if ((srcW / srcH) > maxSlotRatio) {
-            photoSlotW = srcW / scale
-            val totalW = photoSlotW
-            val totalH = totalW / targetRatio
-            canvasW = totalW.roundToInt()
-            canvasH = totalH.roundToInt()
-            photoSlotH = totalH * availableHeightRatio
+        if ((slotW / slotH) > targetRatio) {
+            canvasW = slotW.roundToInt()
+            canvasH = (slotW / targetRatio).roundToInt()
         } else {
-            photoSlotH = srcH / scale
-            val totalH = photoSlotH / availableHeightRatio
-            val totalW = totalH * targetRatio
-            canvasW = totalW.roundToInt()
-            canvasH = totalH.roundToInt()
-            photoSlotW = totalW
+            canvasH = slotH.roundToInt()
+            canvasW = (slotH * targetRatio).roundToInt()
         }
 
         val output = Bitmap.createBitmap(canvasW, canvasH, Bitmap.Config.ARGB_8888)
@@ -82,19 +104,18 @@ object FrameCompositor {
         // 1. Draw blurred background
         drawBlurredBackground(canvas, source, canvasW, canvasH, config)
 
-        // 2. Position the main photo
-        val photoW = srcW
-        val photoH = srcH
-        val photoLeft = (canvasW - photoW) / 2f
-        val photoTop = (canvasH * availableHeightRatio - photoH) / 2f + (canvasH * 0.03f)
-        val photoRect = RectF(photoLeft, photoTop, photoLeft + photoW, photoTop + photoH)
+        // 2. Position the main photo and footer with pure vertical and horizontal symmetry
+        val photoLeft = (canvasW - srcW) / 2f
+        val contentTop = (canvasH - totalContentH) / 2f
+        val photoTop = contentTop
+        val photoRect = RectF(photoLeft, photoTop, photoLeft + srcW, photoTop + srcH)
 
-        val referenceDim = min(canvasW, canvasH).toFloat()
-        val cornerPx = (config.cornerRadius / 1000f) * referenceDim
-        val shadowPx = (config.shadowRadius / 1000f) * referenceDim
+        val cornerPx = (config.cornerRadius / 1000f) * refDim
+        val blurPx = (config.shadowRadius / 1000f) * refDim
+        val spreadPx = (config.shadowSpread / 1000f) * refDim
 
-        // 3. Draw soft ambient shadow (symmetrical by default)
-        drawSoftShadow(canvas, photoRect, cornerPx, shadowPx, config.shadowAlpha, config.shadowOffsetY)
+        // 3. Draw soft ambient shadow with real Gaussian blur
+        drawSoftShadow(canvas, photoRect, cornerPx, blurPx, spreadPx, config.shadowAlpha, config.shadowOffsetY)
 
         // 4. Draw rounded photo
         val clipPath = Path().apply {
@@ -105,10 +126,30 @@ object FrameCompositor {
         canvas.drawBitmap(source, null, photoRect, Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
         canvas.restore()
 
-        // 5. Draw Footer / Metadata block with custom vertical offset
-        val baseRatio = 0.46f + (config.footerVerticalOffset / 100f).coerceIn(-0.3f, 0.3f)
-        val footerCenterY = photoRect.bottom + (canvasH - photoRect.bottom) * baseRatio
-        drawMetadataFooter(context, canvas, canvasW, photoRect, footerCenterY, referenceDim, exif, config)
+        // 5. Draw Footer / Metadata block with consistent gap and optical baseline alignment
+        if (footerHeight > 0f) {
+            val footerCenterY = photoRect.bottom + gapBelowPhoto + (footerHeight / 2f)
+            drawMetadataFooter(
+                context = context,
+                canvas = canvas,
+                cw = canvasW,
+                photoRect = photoRect,
+                centerY = footerCenterY,
+                refDim = refDim,
+                titleSize = titleSize,
+                paramsSize = paramsSize,
+                lineSpacing = lineSpacing,
+                hasLine1 = hasLine1,
+                hasLine2 = hasLine2,
+                hasLogo = hasLogo,
+                brandRes = brandRes,
+                brandName = brandName,
+                modelText = modelText,
+                paramsText = paramsText,
+                config = config,
+                exif = exif
+            )
+        }
 
         return output
     }
@@ -120,7 +161,6 @@ object FrameCompositor {
         ch: Int,
         config: FrameConfig
     ) {
-        // Fast blur via downsampled thumbnail
         val thumbW = 320
         val thumbH = max(240, (320f * ch / cw).roundToInt())
         val thumb = Bitmap.createScaledBitmap(source, thumbW, thumbH, true)
@@ -133,7 +173,6 @@ object FrameCompositor {
         canvas.drawBitmap(blurredThumb, null, dstRect, bgPaint)
         blurredThumb.recycle()
 
-        // Dimming overlay
         val dimAlpha = (config.blurDimming.coerceIn(0f, 0.8f) * 255).roundToInt()
         if (dimAlpha > 0) {
             val dimPaint = Paint().apply {
@@ -146,35 +185,34 @@ object FrameCompositor {
     private fun drawSoftShadow(
         canvas: Canvas,
         rect: RectF,
-        radius: Float,
-        blurSize: Float,
+        cornerPx: Float,
+        blurPx: Float,
+        spreadPx: Float,
         alphaFactor: Float,
         offsetYPercent: Float
     ) {
-        if (blurSize <= 0f || alphaFactor <= 0f) return
+        if (alphaFactor <= 0.01f || (blurPx <= 0.5f && spreadPx <= 0f)) return
+
+        val alphaInt = (alphaFactor.coerceIn(0f, 1f) * 255).roundToInt()
+        val offsetY = (offsetYPercent / 100f) * (blurPx + spreadPx) * 0.5f
+
+        val shadowRect = RectF(
+            rect.left - spreadPx,
+            rect.top - spreadPx + offsetY,
+            rect.right + spreadPx,
+            rect.bottom + spreadPx + offsetY
+        )
 
         val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(alphaInt, 0, 0, 0)
             style = Paint.Style.FILL
+            if (blurPx > 0.5f) {
+                maskFilter = BlurMaskFilter(blurPx, BlurMaskFilter.Blur.NORMAL)
+            }
         }
 
-        val steps = 6
-        val stepAlpha = (alphaFactor * 255f / steps).roundToInt()
-
-        for (i in steps downTo 1) {
-            val progress = i.toFloat() / steps
-            val spread = blurSize * progress
-            // 0 offset by default gives perfectly symmetrical ambient glow
-            val offsetY = (offsetYPercent / 100f) * blurSize * 0.5f * progress
-            shadowPaint.color = Color.argb((stepAlpha * 0.7f).roundToInt(), 0, 0, 0)
-
-            val shadowRect = RectF(
-                rect.left - spread,
-                rect.top - spread + offsetY,
-                rect.right + spread,
-                rect.bottom + spread + offsetY
-            )
-            canvas.drawRoundRect(shadowRect, radius + spread * 0.25f, radius + spread * 0.25f, shadowPaint)
-        }
+        val shadowCorner = cornerPx + spreadPx * 0.5f
+        canvas.drawRoundRect(shadowRect, shadowCorner, shadowCorner, shadowPaint)
     }
 
     private val typefaceCache = mutableMapOf<String, Typeface>()
@@ -208,181 +246,204 @@ object FrameCompositor {
         photoRect: RectF,
         centerY: Float,
         refDim: Float,
-        exif: ExifData,
-        config: FrameConfig
+        titleSize: Float,
+        paramsSize: Float,
+        lineSpacing: Float,
+        hasLine1: Boolean,
+        hasLine2: Boolean,
+        hasLogo: Boolean,
+        brandRes: Int?,
+        brandName: String,
+        modelText: String,
+        paramsText: String,
+        config: FrameConfig,
+        exif: ExifData
     ) {
-        val brandRes = exif.brand.iconRes
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             letterSpacing = config.letterSpacing
         }
 
-        val titleSize = refDim * 0.032f
-        val paramsSize = refDim * 0.022f
-
-        val lineSpacing = titleSize * (config.lineSpacing / 32f) * 0.65f
         val logoGap = refDim * (config.logoGap / 1000f)
+        val logoYOffset = refDim * (config.logoOffsetY / 1000f)
+        val hOffset = refDim * (config.textHorizontalOffset / 1000f)
 
-        val modelText = if (config.showModel) exif.model else ""
-        val brandName = if (brandRes == null && config.showLogo) exif.brand.displayName else ""
-        val hasLogo = config.showLogo && brandRes != null
+        // Baseline positioning: if only one line is present, it collapses to centerY
+        val topY = if (hasLine1 && hasLine2) centerY - lineSpacing * 0.55f else centerY
+        val bottomY = if (hasLine1 && hasLine2) centerY + lineSpacing * 0.75f else centerY
 
-        // Bottom line params preparation
-        val paramsList = mutableListOf<String>()
-        if (config.showParams) {
-            if (exif.formattedParams.isNotBlank()) paramsList.add(exif.formattedParams)
-            if (config.showLens && exif.lens.isNotBlank()) paramsList.add(exif.lens)
-            if (config.showDate && exif.dateTime.isNotBlank()) paramsList.add(exif.dateTime)
+        // Measure optical cap-height of uppercase title font for baseline alignment
+        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+        textPaint.textSize = titleSize
+        val capBounds = Rect()
+        textPaint.getTextBounds("H", 0, 1, capBounds)
+        val capHeight = max(1f, capBounds.height().toFloat())
+        val capCenterY = topY - (capHeight / 2f)
+
+        val paramsWeight = if (config.fontWeight == space.ogurecs.framed.model.CustomFontWeight.BOLD) {
+            space.ogurecs.framed.model.CustomFontWeight.MEDIUM
+        } else {
+            space.ogurecs.framed.model.CustomFontWeight.REGULAR
         }
-        val paramsText = paramsList.joinToString("   ")
 
         when (config.textAlignment) {
             space.ogurecs.framed.model.TextAlignment.SPLIT -> {
-                // Split: Brand/Model on Left, Params on Right (both on centerY line!)
-                val startX = photoRect.left
-                val endX = photoRect.right
-
-                var currentX = startX
-                if (hasLogo) {
-                    val drawable = ContextCompat.getDrawable(context, brandRes)
-                    if (drawable != null) {
-                        applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
-                        val logoH = (titleSize * 1.15f).roundToInt()
-                        val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
-                        val logoW = (logoH * aspect).roundToInt()
-                        val logoTop = (centerY - logoH * 0.75f).roundToInt()
-                        drawable.setBounds(currentX.roundToInt(), logoTop, (currentX + logoW).roundToInt(), logoTop + logoH)
-                        drawable.draw(canvas)
-                        currentX += logoW + logoGap
+                if (hasLine1 && hasLine2) {
+                    var currentX = photoRect.left + hOffset
+                    if (hasLogo && brandRes != null) {
+                        val drawable = ContextCompat.getDrawable(context, brandRes)
+                        if (drawable != null) {
+                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
+                            val logoH = (capHeight * 1.05f).roundToInt()
+                            val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
+                            val logoW = (logoH * aspect).roundToInt()
+                            val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
+                            drawable.setBounds(currentX.roundToInt(), logoTop, (currentX + logoW).roundToInt(), logoTop + logoH)
+                            drawable.draw(canvas)
+                            currentX += logoW + logoGap
+                        }
+                    } else if (brandName.isNotBlank()) {
+                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+                        textPaint.textSize = titleSize
+                        textPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(brandName, currentX, centerY, textPaint)
+                        currentX += textPaint.measureText(brandName) + logoGap
                     }
-                } else if (brandName.isNotBlank()) {
-                    textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
-                    textPaint.textSize = titleSize
-                    textPaint.textAlign = Paint.Align.LEFT
-                    canvas.drawText(brandName, currentX, centerY, textPaint)
-                    currentX += textPaint.measureText(brandName) + logoGap
-                }
 
-                if (modelText.isNotBlank()) {
-                    textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
-                    textPaint.textSize = titleSize
-                    textPaint.textAlign = Paint.Align.LEFT
-                    canvas.drawText(modelText, currentX, centerY, textPaint)
-                }
-
-                if (paramsText.isNotBlank()) {
-                    val paramsWeight = if (config.fontWeight == space.ogurecs.framed.model.CustomFontWeight.BOLD) {
-                        space.ogurecs.framed.model.CustomFontWeight.MEDIUM
-                    } else {
-                        space.ogurecs.framed.model.CustomFontWeight.REGULAR
+                    if (modelText.isNotBlank()) {
+                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+                        textPaint.textSize = titleSize
+                        textPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(modelText, currentX, centerY, textPaint)
                     }
+
                     textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
                     textPaint.textSize = paramsSize
                     textPaint.textAlign = Paint.Align.RIGHT
                     textPaint.color = Color.argb(235, 255, 255, 255)
-                    canvas.drawText(paramsText, endX, centerY, textPaint)
+                    canvas.drawText(paramsText, photoRect.right + hOffset, centerY, textPaint)
+                } else if (!hasLine1 && hasLine2) {
+                    // Only params active: promote to single centered line
+                    textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
+                    textPaint.textSize = paramsSize
+                    textPaint.textAlign = Paint.Align.CENTER
+                    textPaint.color = Color.argb(235, 255, 255, 255)
+                    canvas.drawText(paramsText, cw / 2f + hOffset, centerY, textPaint)
+                } else if (hasLine1 && !hasLine2) {
+                    var currentX = photoRect.left + hOffset
+                    if (hasLogo && brandRes != null) {
+                        val drawable = ContextCompat.getDrawable(context, brandRes)
+                        if (drawable != null) {
+                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
+                            val logoH = (capHeight * 1.05f).roundToInt()
+                            val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
+                            val logoW = (logoH * aspect).roundToInt()
+                            val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
+                            drawable.setBounds(currentX.roundToInt(), logoTop, (currentX + logoW).roundToInt(), logoTop + logoH)
+                            drawable.draw(canvas)
+                            currentX += logoW + logoGap
+                        }
+                    } else if (brandName.isNotBlank()) {
+                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+                        textPaint.textSize = titleSize
+                        textPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(brandName, currentX, centerY, textPaint)
+                        currentX += textPaint.measureText(brandName) + logoGap
+                    }
+
+                    if (modelText.isNotBlank()) {
+                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+                        textPaint.textSize = titleSize
+                        textPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(modelText, currentX, centerY, textPaint)
+                    }
                 }
             }
             space.ogurecs.framed.model.TextAlignment.LEFT -> {
-                // Left aligned: flush with photo's left border
-                val startX = photoRect.left
-                val topY = if (paramsText.isNotBlank()) centerY - lineSpacing * 0.5f else centerY
-                val bottomY = centerY + lineSpacing * 0.95f
-
-                var currentX = startX
-                if (hasLogo) {
-                    val drawable = ContextCompat.getDrawable(context, brandRes)
-                    if (drawable != null) {
-                        applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
-                        val logoH = (titleSize * 1.15f).roundToInt()
-                        val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
-                        val logoW = (logoH * aspect).roundToInt()
-                        val logoTop = (topY - logoH * 0.75f).roundToInt()
-                        drawable.setBounds(currentX.roundToInt(), logoTop, (currentX + logoW).roundToInt(), logoTop + logoH)
-                        drawable.draw(canvas)
-                        currentX += logoW + logoGap
+                var currentX = photoRect.left + hOffset
+                if (hasLine1) {
+                    if (hasLogo && brandRes != null) {
+                        val drawable = ContextCompat.getDrawable(context, brandRes)
+                        if (drawable != null) {
+                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
+                            val logoH = (capHeight * 1.05f).roundToInt()
+                            val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
+                            val logoW = (logoH * aspect).roundToInt()
+                            val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
+                            drawable.setBounds(currentX.roundToInt(), logoTop, (currentX + logoW).roundToInt(), logoTop + logoH)
+                            drawable.draw(canvas)
+                            currentX += logoW + logoGap
+                        }
+                    } else if (brandName.isNotBlank()) {
+                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+                        textPaint.textSize = titleSize
+                        textPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(brandName, currentX, topY, textPaint)
+                        currentX += textPaint.measureText(brandName) + logoGap
                     }
-                } else if (brandName.isNotBlank()) {
-                    textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
-                    textPaint.textSize = titleSize
-                    textPaint.textAlign = Paint.Align.LEFT
-                    canvas.drawText(brandName, currentX, topY, textPaint)
-                    currentX += textPaint.measureText(brandName) + logoGap
+
+                    if (modelText.isNotBlank()) {
+                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+                        textPaint.textSize = titleSize
+                        textPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(modelText, currentX, topY, textPaint)
+                    }
                 }
 
-                if (modelText.isNotBlank()) {
-                    textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
-                    textPaint.textSize = titleSize
-                    textPaint.textAlign = Paint.Align.LEFT
-                    canvas.drawText(modelText, currentX, topY, textPaint)
-                }
-
-                if (paramsText.isNotBlank()) {
-                    val paramsWeight = if (config.fontWeight == space.ogurecs.framed.model.CustomFontWeight.BOLD) {
-                        space.ogurecs.framed.model.CustomFontWeight.MEDIUM
-                    } else {
-                        space.ogurecs.framed.model.CustomFontWeight.REGULAR
-                    }
+                if (hasLine2) {
+                    val targetY = if (hasLine1) bottomY else centerY
                     textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
                     textPaint.textSize = paramsSize
                     textPaint.textAlign = Paint.Align.LEFT
                     textPaint.color = Color.argb(235, 255, 255, 255)
-                    canvas.drawText(paramsText, startX, bottomY, textPaint)
+                    canvas.drawText(paramsText, photoRect.left + hOffset, targetY, textPaint)
                 }
             }
             space.ogurecs.framed.model.TextAlignment.CENTER -> {
-                // Centered
-                val topY = if (paramsText.isNotBlank()) centerY - lineSpacing * 0.5f else centerY
-                val bottomY = centerY + lineSpacing * 0.95f
+                if (hasLine1) {
+                    if (hasLogo && brandRes != null) {
+                        val drawable = ContextCompat.getDrawable(context, brandRes)
+                        if (drawable != null) {
+                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
+                            val logoH = (capHeight * 1.05f).roundToInt()
+                            val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
+                            val logoW = (logoH * aspect).roundToInt()
+                            val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
 
-                if (hasLogo) {
-                    val drawable = ContextCompat.getDrawable(context, brandRes)
-                    if (drawable != null) {
-                        applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
-                        val logoH = (titleSize * 1.15f).roundToInt()
-                        val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
-                        val logoW = (logoH * aspect).roundToInt()
+                            if (modelText.isNotBlank()) {
+                                textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+                                textPaint.textSize = titleSize
+                                val modelW = textPaint.measureText(modelText)
+                                val totalW = logoW + logoGap + modelW
 
-                        if (modelText.isNotBlank()) {
-                            textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
-                            textPaint.textSize = titleSize
-                            val modelW = textPaint.measureText(modelText)
-                            val totalW = logoW + logoGap + modelW
+                                val startX = (cw - totalW) / 2f + hOffset
+                                drawable.setBounds(startX.roundToInt(), logoTop, (startX + logoW).roundToInt(), logoTop + logoH)
+                                drawable.draw(canvas)
 
-                            val startX = (cw - totalW) / 2f
-                            val logoTop = (topY - logoH * 0.75f).roundToInt()
-
-                            drawable.setBounds(startX.roundToInt(), logoTop, (startX + logoW).roundToInt(), logoTop + logoH)
-                            drawable.draw(canvas)
-
-                            textPaint.textAlign = Paint.Align.LEFT
-                            canvas.drawText(modelText, startX + logoW + logoGap, topY, textPaint)
-                        } else {
-                            val startX = (cw - logoW) / 2f
-                            val logoTop = (topY - logoH * 0.75f).roundToInt()
-                            drawable.setBounds(startX.roundToInt(), logoTop, (startX + logoW).roundToInt(), logoTop + logoH)
-                            drawable.draw(canvas)
+                                textPaint.textAlign = Paint.Align.LEFT
+                                canvas.drawText(modelText, startX + logoW + logoGap, topY, textPaint)
+                            } else {
+                                val startX = (cw - logoW) / 2f + hOffset
+                                drawable.setBounds(startX.roundToInt(), logoTop, (startX + logoW).roundToInt(), logoTop + logoH)
+                                drawable.draw(canvas)
+                            }
                         }
+                    } else if (brandName.isNotBlank() || modelText.isNotBlank()) {
+                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+                        textPaint.textSize = titleSize
+                        textPaint.textAlign = Paint.Align.CENTER
+                        val combined = listOf(brandName, modelText).filter { it.isNotBlank() }.joinToString("  ")
+                        canvas.drawText(combined, cw / 2f + hOffset, topY, textPaint)
                     }
-                } else if (brandName.isNotBlank() || modelText.isNotBlank()) {
-                    textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
-                    textPaint.textSize = titleSize
-                    textPaint.textAlign = Paint.Align.CENTER
-                    val combined = listOf(brandName, modelText).filter { it.isNotBlank() }.joinToString("  ")
-                    canvas.drawText(combined, cw / 2f, topY, textPaint)
                 }
 
-                if (paramsText.isNotBlank()) {
-                    val paramsWeight = if (config.fontWeight == space.ogurecs.framed.model.CustomFontWeight.BOLD) {
-                        space.ogurecs.framed.model.CustomFontWeight.MEDIUM
-                    } else {
-                        space.ogurecs.framed.model.CustomFontWeight.REGULAR
-                    }
+                if (hasLine2) {
+                    val targetY = if (hasLine1) bottomY else centerY
                     textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
                     textPaint.textSize = paramsSize
                     textPaint.textAlign = Paint.Align.CENTER
                     textPaint.color = Color.argb(235, 255, 255, 255)
-                    canvas.drawText(paramsText, cw / 2f, bottomY, textPaint)
+                    canvas.drawText(paramsText, cw / 2f + hOffset, targetY, textPaint)
                 }
             }
         }
@@ -411,39 +472,137 @@ object FrameCompositor {
         }
     }
 
-    fun saveToGallery(context: Context, bitmap: Bitmap, title: String): Uri? {
-        val filename = "${title}_${System.currentTimeMillis()}.jpg"
+    fun saveToGallery(
+        context: Context,
+        bitmap: Bitmap,
+        title: String,
+        quality: ExportQuality = ExportQuality.ORIGINAL_100
+    ): Uri? {
+        val exportBitmap: Bitmap
+        val compressQuality: Int
+        val prefix: String
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
-                put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Framed")
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
+        if (quality == ExportQuality.TIKTOK_OPTIMIZED) {
+            prefix = "framed_tiktok"
+            compressQuality = 92
+
+            // TikTok photo mode optimal screen dimensions (1080p width, max 1920p height)
+            val origW = bitmap.width
+            val origH = bitmap.height
+            val scale = min(1.0f, min(1080f / origW, 1920f / origH))
+            val targetW = max(1, (origW * scale).roundToInt())
+            val targetH = max(1, (origH * scale).roundToInt())
+
+            val scaled = if (targetW != origW || targetH != origH) {
+                Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
+            } else {
+                bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true)
             }
 
-            val resolver = context.contentResolver
-            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-            if (uri != null) {
-                resolver.openOutputStream(uri)?.use { stream ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
-                }
-                contentValues.clear()
-                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                resolver.update(uri, contentValues, null, null)
-                return uri
-            }
+            // Restore micro-contrast and typographic sharpness so TikTok ingestion doesn't blur
+            val sharpened = sharpenForWeb(scaled)
+            if (scaled != bitmap) scaled.recycle()
+            exportBitmap = sharpened
         } else {
-            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Framed")
-            if (!dir.exists()) dir.mkdirs()
-            val file = File(dir, filename)
-            FileOutputStream(file).use { out ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)
-            }
-            return Uri.fromFile(file)
+            prefix = "framed_original"
+            compressQuality = 100
+            exportBitmap = bitmap
         }
-        return null
+
+        val filename = "${prefix}_${title}_${System.currentTimeMillis()}.jpg"
+
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Framed")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+
+                val resolver = context.contentResolver
+                val insertUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                if (insertUri != null) {
+                    resolver.openOutputStream(insertUri)?.use { stream ->
+                        exportBitmap.compress(Bitmap.CompressFormat.JPEG, compressQuality, stream)
+                    }
+                    contentValues.clear()
+                    contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                    resolver.update(insertUri, contentValues, null, null)
+                    insertUri
+                } else null
+            } else {
+                val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Framed")
+                if (!dir.exists()) dir.mkdirs()
+                val file = File(dir, filename)
+                FileOutputStream(file).use { out ->
+                    exportBitmap.compress(Bitmap.CompressFormat.JPEG, compressQuality, out)
+                }
+                Uri.fromFile(file)
+            }
+        } finally {
+            if (exportBitmap != bitmap) {
+                exportBitmap.recycle()
+            }
+        }
     }
+
+    private fun sharpenForWeb(source: Bitmap): Bitmap {
+        val w = source.width
+        val h = source.height
+        val output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val pixels = IntArray(w * h)
+        source.getPixels(pixels, 0, w, 0, 0, w, h)
+        val outPixels = IntArray(w * h)
+
+        val cW = 1.30f
+        val nW = -0.075f
+
+        for (y in 0 until h) {
+            val yOffset = y * w
+            val yPrev = max(0, y - 1) * w
+            val yNext = min(h - 1, y + 1) * w
+
+            for (x in 0 until w) {
+                val xPrev = max(0, x - 1)
+                val xNext = min(w - 1, x + 1)
+
+                val pC = pixels[yOffset + x]
+                val pT = pixels[yPrev + x]
+                val pB = pixels[yNext + x]
+                val pL = pixels[yOffset + xPrev]
+                val pR = pixels[yOffset + xNext]
+
+                val a = (pC ushr 24) and 0xFF
+
+                val rC = (pC ushr 16) and 0xFF
+                val rT = (pT ushr 16) and 0xFF
+                val rB = (pB ushr 16) and 0xFF
+                val rL = (pL ushr 16) and 0xFF
+                val rR = (pR ushr 16) and 0xFF
+                val nR = (rC * cW + (rT + rB + rL + rR) * nW).roundToInt().coerceIn(0, 255)
+
+                val gC = (pC ushr 8) and 0xFF
+                val gT = (pT ushr 8) and 0xFF
+                val gB = (pB ushr 8) and 0xFF
+                val gL = (pL ushr 8) and 0xFF
+                val gR = (pR ushr 8) and 0xFF
+                val nG = (gC * cW + (gT + gB + gL + gR) * nW).roundToInt().coerceIn(0, 255)
+
+                val bC = pC and 0xFF
+                val bT = pT and 0xFF
+                val bB = pB and 0xFF
+                val bL = pL and 0xFF
+                val bR = pR and 0xFF
+                val nB = (bC * cW + (bT + bB + bL + bR) * nW).roundToInt().coerceIn(0, 255)
+
+                outPixels[yOffset + x] = (a shl 24) or (nR shl 16) or (nG shl 8) or nB
+            }
+        }
+        output.setPixels(outPixels, 0, w, 0, 0, w, h)
+        return output
+    }
+
 
     private fun fastBlur(sentBitmap: Bitmap, radius: Int): Bitmap {
         val bitmap = sentBitmap.copy(sentBitmap.config ?: Bitmap.Config.ARGB_8888, true)

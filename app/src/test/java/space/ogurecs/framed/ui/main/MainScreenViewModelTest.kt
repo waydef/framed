@@ -1,27 +1,50 @@
 package space.ogurecs.framed.ui.main
 
-import space.ogurecs.framed.data.DataRepository
-import junit.framework.TestCase.assertEquals
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Test
+import space.ogurecs.framed.model.CameraBrand
+import space.ogurecs.framed.model.CanvasRatio
+import space.ogurecs.framed.model.ExifData
+import space.ogurecs.framed.model.ExportQuality
+import space.ogurecs.framed.model.FrameConfig
 
-class MainScreenViewModelTest {
-  @Test
-  fun uiState_initiallyLoading() = runTest {
-    val viewModel = MainScreenViewModel(FakeMyModelRepository())
-    assertEquals(viewModel.uiState.first(), MainScreenUiState.Loading)
-  }
+class FramedModelTest {
 
-  @Test
-  fun uiState_onItemSaved_isDisplayed() = runTest {
-    val viewModel = MainScreenViewModel(FakeMyModelRepository())
-    assertEquals(viewModel.uiState.first(), MainScreenUiState.Loading)
-  }
+    @Test
+    fun testCameraBrandDetection() {
+        assertEquals(CameraBrand.SONY, CameraBrand.detect("Sony ILCE-6600"))
+        assertEquals(CameraBrand.CANON, CameraBrand.detect("Canon EOS R5"))
+        assertEquals(CameraBrand.NIKON, CameraBrand.detect("NIKON CORPORATION"))
+        assertEquals(CameraBrand.FUJIFILM, CameraBrand.detect("FUJIFILM X-T4"))
+        assertEquals(CameraBrand.LEICA, CameraBrand.detect("Leica Camera AG"))
+        assertEquals(CameraBrand.APPLE, CameraBrand.detect("Apple iPhone 15 Pro"))
+    }
+
+    @Test
+    fun testFormattedParams() {
+        val exif = ExifData(
+            focalLength = "40mm",
+            aperture = "F5.6",
+            shutterSpeed = "1/4s",
+            iso = "ISO200"
+        )
+        assertEquals("40mm  F5.6  1/4s  ISO200", exif.formattedParams)
+    }
+
+    @Test
+    fun testFrameConfigDefaults() {
+        val config = FrameConfig()
+        assertEquals(32f, config.fontSizeLine1)
+        assertEquals(22f, config.fontSizeLine2)
+        assertEquals(0f, config.logoOffsetY)
+        assertEquals(8f, config.shadowSpread)
+        assertEquals(CanvasRatio.RATIO_3_4, config.ratio)
+    }
+
+    @Test
+    fun testExportQualityBadges() {
+        assertEquals("100% без потерь", ExportQuality.ORIGINAL_100.badge)
+        assertEquals("1080p чётко", ExportQuality.TIKTOK_OPTIMIZED.badge)
+    }
 }
 
-private class FakeMyModelRepository : DataRepository {
-  override val data: Flow<List<String>> = flow { emit(listOf("Sample")) }
-}

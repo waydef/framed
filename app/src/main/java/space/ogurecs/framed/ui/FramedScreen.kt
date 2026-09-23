@@ -113,6 +113,7 @@ import space.ogurecs.framed.model.CameraBrand
 import space.ogurecs.framed.model.CanvasRatio
 import space.ogurecs.framed.model.CustomFontWeight
 import space.ogurecs.framed.model.ExifData
+import space.ogurecs.framed.model.ExportQuality
 import space.ogurecs.framed.model.FontOption
 import space.ogurecs.framed.model.FrameConfig
 import space.ogurecs.framed.model.LogoColorMode
@@ -253,96 +254,6 @@ fun FramedScreen() {
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = darkBg)
             )
-        },
-        floatingActionButton = {
-            if (fullBitmap != null) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (selectedUris.size > 1) {
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    isExporting = true
-                                    try {
-                                        withContext(Dispatchers.Default) {
-                                            selectedUris.forEachIndexed { idx, u ->
-                                                batchProgress = Pair(idx + 1, selectedUris.size)
-                                                val parsed = ExifParser.parse(context, u)
-                                                context.contentResolver.openInputStream(u)?.use { st ->
-                                                    val raw = BitmapFactory.decodeStream(st)
-                                                    if (raw != null) {
-                                                        val rendered = FrameCompositor.render(context, raw, parsed, config)
-                                                        FrameCompositor.saveToGallery(context, rendered, "framed_${parsed.model.ifBlank { "photo" }}")
-                                                        rendered.recycle()
-                                                        raw.recycle()
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Toast.makeText(context, "Все ${selectedUris.size} фото сохранены в Галерею!", Toast.LENGTH_LONG).show()
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "Ошибка пакета: ${e.message}", Toast.LENGTH_SHORT).show()
-                                    } finally {
-                                        isExporting = false
-                                        batchProgress = null
-                                    }
-                                }
-                            },
-                            enabled = !isExporting,
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = Color(0xFF1E222D),
-                                contentColor = Color(0xFFE2E8F0)
-                            )
-                        ) {
-                            Text("Экспорт всех (${selectedUris.size})", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-
-                    ExtendedFloatingActionButton(
-                        onClick = {
-                            val src = fullBitmap ?: return@ExtendedFloatingActionButton
-                            scope.launch {
-                                isExporting = true
-                                try {
-                                    val savedUri = withContext(Dispatchers.Default) {
-                                        val renderedHighRes = FrameCompositor.render(context, src, exifData, config)
-                                        val uri = FrameCompositor.saveToGallery(context, renderedHighRes, "framed_${exifData.model.ifBlank { "photo" }}")
-                                        renderedHighRes.recycle()
-                                        uri
-                                    }
-                                    if (savedUri != null) {
-                                        Toast.makeText(context, "Сохранено в 100% качестве!", Toast.LENGTH_SHORT).show()
-                                    }
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Ошибка сохранения: ${e.message}", Toast.LENGTH_SHORT).show()
-                                } finally {
-                                    isExporting = false
-                                }
-                            }
-                        },
-                        containerColor = accentColor,
-                        contentColor = Color.White,
-                        icon = {
-                            if (isExporting) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                            } else {
-                                Icon(Icons.Default.Download, contentDescription = null)
-                            }
-                        },
-                        text = {
-                            val label = if (isExporting) {
-                                batchProgress?.let { "Кадр ${it.first}/${it.second}..." } ?: "Экспорт..."
-                            } else {
-                                "Сохранить (100%)"
-                            }
-                            Text(label, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                        }
-                    )
-                }
-            }
         }
     ) { innerPadding ->
         Column(
@@ -540,91 +451,107 @@ fun FramedScreen() {
                         }
 
                         // Persistent Action Bar (Pinned cleanly below settings without any overlap)
+                        val runExport: (ExportQuality) -> Unit = { quality ->
+                            val src = fullBitmap
+                            if (src != null) {
+                                scope.launch {
+                                    isExporting = true
+                                    try {
+                                        withContext(Dispatchers.Default) {
+                                            if (selectedUris.size > 1) {
+                                                selectedUris.forEachIndexed { idx, u ->
+                                                    batchProgress = Pair(idx + 1, selectedUris.size)
+                                                    val parsed = ExifParser.parse(context, u)
+                                                    context.contentResolver.openInputStream(u)?.use { st ->
+                                                        val raw = BitmapFactory.decodeStream(st)
+                                                        if (raw != null) {
+                                                            val rendered = FrameCompositor.render(context, raw, parsed, config)
+                                                            FrameCompositor.saveToGallery(context, rendered, parsed.model.ifBlank { "photo" }, quality)
+                                                            rendered.recycle()
+                                                            raw.recycle()
+                                                        }
+                                                    }
+                                                }
+                                            } else {
+                                                batchProgress = Pair(1, 1)
+                                                val renderedHighRes = FrameCompositor.render(context, src, exifData, config)
+                                                FrameCompositor.saveToGallery(context, renderedHighRes, exifData.model.ifBlank { "photo" }, quality)
+                                                renderedHighRes.recycle()
+                                            }
+                                        }
+                                        val msg = if (quality == ExportQuality.TIKTOK_OPTIMIZED) {
+                                            if (selectedUris.size > 1) "Все ${selectedUris.size} фото сохранены для TikTok!" else "Фото сохранено для TikTok!"
+                                        } else {
+                                            if (selectedUris.size > 1) "Все ${selectedUris.size} фото сохранены в 100% качестве!" else "Сохранено в 100% качестве!"
+                                        }
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Ошибка экспорта: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        isExporting = false
+                                        batchProgress = null
+                                    }
+                                }
+                            }
+                        }
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(Color(0xFF12141A))
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            if (selectedUris.size > 1) {
-                                OutlinedButton(
-                                    onClick = {
-                                        scope.launch {
-                                            isExporting = true
-                                            try {
-                                                withContext(Dispatchers.Default) {
-                                                    selectedUris.forEachIndexed { idx, u ->
-                                                        batchProgress = Pair(idx + 1, selectedUris.size)
-                                                        val parsed = ExifParser.parse(context, u)
-                                                        context.contentResolver.openInputStream(u)?.use { st ->
-                                                            val raw = BitmapFactory.decodeStream(st)
-                                                            if (raw != null) {
-                                                                val rendered = FrameCompositor.render(context, raw, parsed, config)
-                                                                FrameCompositor.saveToGallery(context, rendered, "framed_${parsed.model.ifBlank { "photo" }}")
-                                                                rendered.recycle()
-                                                                raw.recycle()
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                Toast.makeText(context, "Все ${selectedUris.size} фото сохранены в Галерею!", Toast.LENGTH_LONG).show()
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Ошибка пакета: ${e.message}", Toast.LENGTH_SHORT).show()
-                                            } finally {
-                                                isExporting = false
-                                                batchProgress = null
-                                            }
-                                        }
-                                    },
-                                    enabled = !isExporting,
-                                    modifier = Modifier.weight(1f).height(46.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = Color(0xFF1E222D),
-                                        contentColor = Color(0xFFE2E8F0)
-                                    )
-                                ) {
-                                    Text("Экспорт всех (${selectedUris.size})", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-
+                            // 1. Export in Full Quality (100% Native)
                             Button(
-                                onClick = {
-                                    val src = fullBitmap ?: return@Button
-                                    scope.launch {
-                                        isExporting = true
-                                        try {
-                                            val savedUri = withContext(Dispatchers.Default) {
-                                                val renderedHighRes = FrameCompositor.render(context, src, exifData, config)
-                                                val uri = FrameCompositor.saveToGallery(context, renderedHighRes, "framed_${exifData.model.ifBlank { "photo" }}")
-                                                renderedHighRes.recycle()
-                                                uri
-                                            }
-                                            if (savedUri != null) {
-                                                Toast.makeText(context, "Сохранено в 100% качестве!", Toast.LENGTH_SHORT).show()
-                                            }
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Ошибка сохранения: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        } finally {
-                                            isExporting = false
-                                        }
-                                    }
-                                },
-                                enabled = !isExporting,
-                                modifier = Modifier.weight(1f).height(46.dp),
+                                onClick = { runExport(ExportQuality.ORIGINAL_100) },
+                                enabled = !isExporting && fullBitmap != null,
+                                modifier = Modifier.weight(1f).height(48.dp),
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF272C38),
+                                    contentColor = Color.White
+                                )
                             ) {
                                 if (isExporting) {
                                     CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(batchProgress?.let { "Кадр ${it.first}/${it.second}" } ?: "Экспорт...", fontSize = 12.sp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(batchProgress?.let { "${it.first}/${it.second}" } ?: "...", fontSize = 11.sp)
                                 } else {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Сохранить (100%)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFCBD5E1))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Column(horizontalAlignment = Alignment.Start) {
+                                        Text("Оригинал 100%", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                        val countLabel = if (selectedUris.size > 1) "все (${selectedUris.size})" else "без потерь"
+                                        Text(countLabel, fontSize = 9.sp, color = Color(0xFF94A3B8))
+                                    }
+                                }
+                            }
+
+                            // 2. Export for Social Media / TikTok (1080p, smart unsharp sharpening, optimal 92% JPEG)
+                            Button(
+                                onClick = { runExport(ExportQuality.TIKTOK_OPTIMIZED) },
+                                enabled = !isExporting && fullBitmap != null,
+                                modifier = Modifier.weight(1f).height(48.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF4F46E5),
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                if (isExporting) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(batchProgress?.let { "${it.first}/${it.second}" } ?: "...", fontSize = 11.sp)
+                                } else {
+                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Column(horizontalAlignment = Alignment.Start) {
+                                        Text("Для соцсетей (TT)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                        val countLabel = if (selectedUris.size > 1) "все (${selectedUris.size}) • 1080p" else "1080p • чётко"
+                                        Text(countLabel, fontSize = 9.sp, color = Color(0xFFC7D2FE))
+                                    }
                                 }
                             }
                         }
@@ -880,21 +807,30 @@ private fun StyleSettings(
     )
 
     SettingSlider(
-        label = "Глубина тени",
+        label = "Глубина тени (Alpha)",
         valueText = "${(config.shadowAlpha * 100).toInt()}%",
         value = config.shadowAlpha,
-        range = 0f..0.6f,
+        range = 0f..0.8f,
         accent = accent,
         onValueChange = { onConfigChange(config.copy(shadowAlpha = it)) }
     )
 
     SettingSlider(
-        label = "Радиус рассеивания тени",
+        label = "Мягкость размытия тени (Blur)",
         valueText = "${config.shadowRadius.toInt()} px",
         value = config.shadowRadius,
-        range = 10f..70f,
+        range = 0f..90f,
         accent = accent,
         onValueChange = { onConfigChange(config.copy(shadowRadius = it)) }
+    )
+
+    SettingSlider(
+        label = "Рассеивание / Размер тени (Spread)",
+        valueText = "${config.shadowSpread.toInt()} px",
+        value = config.shadowSpread,
+        range = 0f..60f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(shadowSpread = it)) }
     )
 
     SettingSlider(
@@ -913,6 +849,33 @@ private fun SpacingSettings(
     onConfigChange: (FrameConfig) -> Unit
 ) {
     val accent = Color(0xFF818CF8)
+
+    SettingSlider(
+        label = "Размер названия (строка 1)",
+        valueText = "${config.fontSizeLine1.toInt()} pt",
+        value = config.fontSizeLine1,
+        range = 16f..64f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(fontSizeLine1 = it)) }
+    )
+
+    SettingSlider(
+        label = "Размер параметров (строка 2)",
+        valueText = "${config.fontSizeLine2.toInt()} pt",
+        value = config.fontSizeLine2,
+        range = 12f..48f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(fontSizeLine2 = it)) }
+    )
+
+    SettingSlider(
+        label = "Высота логотипа (смещение Y)",
+        valueText = if (config.logoOffsetY == 0f) "0 (оптический центр)" else if (config.logoOffsetY > 0) "+${config.logoOffsetY.toInt()} dp" else "${config.logoOffsetY.toInt()} dp",
+        value = config.logoOffsetY,
+        range = -25f..25f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(logoOffsetY = it)) }
+    )
 
     SettingSlider(
         label = "Отступ логотипа от названия",
@@ -936,9 +899,18 @@ private fun SpacingSettings(
         label = "Положение текста по вертикали",
         valueText = if (config.footerVerticalOffset > 0) "+${config.footerVerticalOffset.toInt()}%" else "${config.footerVerticalOffset.toInt()}%",
         value = config.footerVerticalOffset,
-        range = -25f..25f,
+        range = -35f..35f,
         accent = accent,
         onValueChange = { onConfigChange(config.copy(footerVerticalOffset = it)) }
+    )
+
+    SettingSlider(
+        label = "Смещение текста по горизонтали",
+        valueText = if (config.textHorizontalOffset == 0f) "0" else "${config.textHorizontalOffset.toInt()} dp",
+        value = config.textHorizontalOffset,
+        range = -40f..40f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(textHorizontalOffset = it)) }
     )
 
     SettingSlider(
@@ -950,6 +922,7 @@ private fun SpacingSettings(
         onValueChange = { onConfigChange(config.copy(letterSpacing = it)) }
     )
 }
+
 
 @Composable
 private fun SettingSlider(

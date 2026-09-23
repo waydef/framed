@@ -91,6 +91,11 @@ enum class TextAlignment(val label: String) {
     SPLIT("По краям")
 }
 
+enum class ExportQuality(val label: String, val badge: String) {
+    ORIGINAL_100("Полное качество", "100% без потерь"),
+    TIKTOK_OPTIMIZED("Для TikTok", "1080p чётко")
+}
+
 data class FrameConfig(
     val ratio: CanvasRatio = CanvasRatio.RATIO_3_4,
     val cornerRadius: Float = 28f,
@@ -112,5 +117,10 @@ data class FrameConfig(
     val logoGap: Float = 20f,
     val lineSpacing: Float = 32f,
     val footerVerticalOffset: Float = 0f,
-    val letterSpacing: Float = 0.02f
+    val letterSpacing: Float = 0.02f,
+    val fontSizeLine1: Float = 32f,
+    val fontSizeLine2: Float = 22f,
+    val logoOffsetY: Float = 0f,
+    val shadowSpread: Float = 8f,
+    val textHorizontalOffset: Float = 0f
 )
