@@ -85,11 +85,18 @@ data class ExifData(
             .joinToString("  ")
 }
 
+enum class TextAlignment(val label: String) {
+    CENTER("По центру"),
+    LEFT("Слева"),
+    SPLIT("По краям")
+}
+
 data class FrameConfig(
     val ratio: CanvasRatio = CanvasRatio.RATIO_3_4,
     val cornerRadius: Float = 28f,
     val shadowRadius: Float = 36f,
     val shadowAlpha: Float = 0.38f,
+    val shadowOffsetY: Float = 0f,
     val blurRadius: Float = 42f,
     val blurDimming: Float = 0.12f,
     val photoScale: Float = 0.86f,
@@ -100,5 +107,10 @@ data class FrameConfig(
     val showDate: Boolean = false,
     val logoColorMode: LogoColorMode = LogoColorMode.WHITE,
     val fontOption: FontOption = FontOption.INTER,
-    val fontWeight: CustomFontWeight = CustomFontWeight.MEDIUM
+    val fontWeight: CustomFontWeight = CustomFontWeight.MEDIUM,
+    val textAlignment: TextAlignment = TextAlignment.CENTER,
+    val logoGap: Float = 20f,
+    val lineSpacing: Float = 32f,
+    val footerVerticalOffset: Float = 0f,
+    val letterSpacing: Float = 0.02f
 )

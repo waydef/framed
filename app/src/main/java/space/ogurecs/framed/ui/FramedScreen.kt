@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.LinearScale
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Share
@@ -479,7 +480,6 @@ fun FramedScreen() {
                         modifier = Modifier
                             .fillMaxWidth()
                             .navigationBarsPadding()
-                            .padding(bottom = 12.dp)
                     ) {
                         TabRow(
                             selectedTabIndex = selectedTab,
@@ -495,39 +495,137 @@ fun FramedScreen() {
                             Tab(
                                 selected = selectedTab == 0,
                                 onClick = { selectedTab = 0 },
-                                text = { Text("Формат", fontSize = 13.sp, fontWeight = FontWeight.Medium) },
-                                icon = { Icon(Icons.Default.AspectRatio, contentDescription = null, modifier = Modifier.size(15.dp)) }
+                                text = { Text("Формат", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                icon = { Icon(Icons.Default.AspectRatio, contentDescription = null, modifier = Modifier.size(14.dp)) }
                             )
                             Tab(
                                 selected = selectedTab == 1,
                                 onClick = { selectedTab = 1 },
-                                text = { Text("Стиль", fontSize = 13.sp, fontWeight = FontWeight.Medium) },
-                                icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(15.dp)) }
+                                text = { Text("Стиль", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) }
                             )
                             Tab(
                                 selected = selectedTab == 2,
                                 onClick = { selectedTab = 2 },
-                                text = { Text("Параметры", fontSize = 13.sp, fontWeight = FontWeight.Medium) },
-                                icon = { Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(15.dp)) }
+                                text = { Text("Отступы", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                icon = { Icon(Icons.Default.LinearScale, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                            )
+                            Tab(
+                                selected = selectedTab == 3,
+                                onClick = { selectedTab = 3 },
+                                text = { Text("Инфо", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                icon = { Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp)) }
                             )
                         }
 
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(210.dp)
+                                .height(220.dp)
                                 .verticalScroll(rememberScrollState())
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {
                             when (selectedTab) {
                                 0 -> FormatSettings(config = config, onConfigChange = { config = it })
                                 1 -> StyleSettings(config = config, onConfigChange = { config = it })
-                                2 -> MetaSettings(
+                                2 -> SpacingSettings(config = config, onConfigChange = { config = it })
+                                3 -> MetaSettings(
                                     exif = exifData,
                                     config = config,
                                     onExifChange = { exifData = it },
                                     onConfigChange = { config = it }
                                 )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+
+                        // Persistent Action Bar (Pinned cleanly below settings without any overlap)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFF12141A))
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (selectedUris.size > 1) {
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            isExporting = true
+                                            try {
+                                                withContext(Dispatchers.Default) {
+                                                    selectedUris.forEachIndexed { idx, u ->
+                                                        batchProgress = Pair(idx + 1, selectedUris.size)
+                                                        val parsed = ExifParser.parse(context, u)
+                                                        context.contentResolver.openInputStream(u)?.use { st ->
+                                                            val raw = BitmapFactory.decodeStream(st)
+                                                            if (raw != null) {
+                                                                val rendered = FrameCompositor.render(context, raw, parsed, config)
+                                                                FrameCompositor.saveToGallery(context, rendered, "framed_${parsed.model.ifBlank { "photo" }}")
+                                                                rendered.recycle()
+                                                                raw.recycle()
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Toast.makeText(context, "Все ${selectedUris.size} фото сохранены в Галерею!", Toast.LENGTH_LONG).show()
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Ошибка пакета: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            } finally {
+                                                isExporting = false
+                                                batchProgress = null
+                                            }
+                                        }
+                                    },
+                                    enabled = !isExporting,
+                                    modifier = Modifier.weight(1f).height(46.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = Color(0xFF1E222D),
+                                        contentColor = Color(0xFFE2E8F0)
+                                    )
+                                ) {
+                                    Text("Экспорт всех (${selectedUris.size})", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    val src = fullBitmap ?: return@Button
+                                    scope.launch {
+                                        isExporting = true
+                                        try {
+                                            val savedUri = withContext(Dispatchers.Default) {
+                                                val renderedHighRes = FrameCompositor.render(context, src, exifData, config)
+                                                val uri = FrameCompositor.saveToGallery(context, renderedHighRes, "framed_${exifData.model.ifBlank { "photo" }}")
+                                                renderedHighRes.recycle()
+                                                uri
+                                            }
+                                            if (savedUri != null) {
+                                                Toast.makeText(context, "Сохранено в 100% качестве!", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Ошибка сохранения: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        } finally {
+                                            isExporting = false
+                                        }
+                                    }
+                                },
+                                enabled = !isExporting,
+                                modifier = Modifier.weight(1f).height(46.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                            ) {
+                                if (isExporting) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(batchProgress?.let { "Кадр ${it.first}/${it.second}" } ?: "Экспорт...", fontSize = 12.sp)
+                                } else {
+                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Сохранить (100%)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                }
                             }
                         }
                     }
@@ -610,7 +708,40 @@ private fun FormatSettings(
         }
     }
 
-    Spacer(modifier = Modifier.height(16.dp))
+    Spacer(modifier = Modifier.height(14.dp))
+
+    // Text Alignment
+    Text(
+        text = "Выравнивание текста",
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        color = Color(0xFF94A3B8)
+    )
+    Spacer(modifier = Modifier.height(6.dp))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        space.ogurecs.framed.model.TextAlignment.values().forEach { align ->
+            val isSelected = config.textAlignment == align
+            FilterChip(
+                selected = isSelected,
+                onClick = { onConfigChange(config.copy(textAlignment = align)) },
+                label = { Text(align.label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = Color(0xFF4F46E5),
+                    selectedLabelColor = Color.White,
+                    containerColor = Color(0xFF222631),
+                    labelColor = Color(0xFFCBD5E1)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(14.dp))
 
     val accent = Color(0xFF818CF8)
     SettingSlider(
@@ -764,6 +895,59 @@ private fun StyleSettings(
         range = 10f..70f,
         accent = accent,
         onValueChange = { onConfigChange(config.copy(shadowRadius = it)) }
+    )
+
+    SettingSlider(
+        label = "Смещение тени вниз",
+        valueText = if (config.shadowOffsetY == 0f) "0% (равномерно)" else "${config.shadowOffsetY.toInt()}%",
+        value = config.shadowOffsetY,
+        range = 0f..80f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(shadowOffsetY = it)) }
+    )
+}
+
+@Composable
+private fun SpacingSettings(
+    config: FrameConfig,
+    onConfigChange: (FrameConfig) -> Unit
+) {
+    val accent = Color(0xFF818CF8)
+
+    SettingSlider(
+        label = "Отступ логотипа от названия",
+        valueText = "${config.logoGap.toInt()} dp",
+        value = config.logoGap,
+        range = 4f..60f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(logoGap = it)) }
+    )
+
+    SettingSlider(
+        label = "Расстояние между строками",
+        valueText = "${config.lineSpacing.toInt()} dp",
+        value = config.lineSpacing,
+        range = 10f..60f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(lineSpacing = it)) }
+    )
+
+    SettingSlider(
+        label = "Положение текста по вертикали",
+        valueText = if (config.footerVerticalOffset > 0) "+${config.footerVerticalOffset.toInt()}%" else "${config.footerVerticalOffset.toInt()}%",
+        value = config.footerVerticalOffset,
+        range = -25f..25f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(footerVerticalOffset = it)) }
+    )
+
+    SettingSlider(
+        label = "Межбуквенный интервал (трекинг)",
+        valueText = String.format("%.2f", config.letterSpacing),
+        value = config.letterSpacing,
+        range = 0f..0.15f,
+        accent = accent,
+        onValueChange = { onConfigChange(config.copy(letterSpacing = it)) }
     )
 }
 
