@@ -1,10 +1,12 @@
 package space.ogurecs.framed.util
 
 import android.content.Context
+import space.ogurecs.framed.model.BackgroundType
 import space.ogurecs.framed.model.CanvasRatio
 import space.ogurecs.framed.model.CustomFontWeight
 import space.ogurecs.framed.model.FontOption
 import space.ogurecs.framed.model.FrameConfig
+import space.ogurecs.framed.model.FrameStyle
 import space.ogurecs.framed.model.LogoColorMode
 import space.ogurecs.framed.model.TextAlignment
 
@@ -14,6 +16,12 @@ object ConfigStorage {
     fun saveConfig(context: Context, config: FrameConfig) {
         val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         sp.edit()
+            .putString("style", config.style.name)
+            .putString("bgType", config.bgType.name)
+            .putLong("solidColor", config.solidColor)
+            .putFloat("borderWidth", config.borderWidth)
+            .putLong("borderColor", config.borderColor)
+            .putFloat("sidebarWidthRatio", config.sidebarWidthRatio)
             .putString("ratio", config.ratio.name)
             .putFloat("cornerRadius", config.cornerRadius)
             .putFloat("shadowRadius", config.shadowRadius)
@@ -50,6 +58,12 @@ object ConfigStorage {
         val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val default = FrameConfig()
         return FrameConfig(
+            style = sp.getString("style", null)?.let { runCatching { FrameStyle.valueOf(it) }.getOrNull() } ?: default.style,
+            bgType = sp.getString("bgType", null)?.let { runCatching { BackgroundType.valueOf(it) }.getOrNull() } ?: default.bgType,
+            solidColor = if (sp.contains("solidColor")) sp.getLong("solidColor", default.solidColor) else default.solidColor,
+            borderWidth = sp.getFloat("borderWidth", default.borderWidth),
+            borderColor = if (sp.contains("borderColor")) sp.getLong("borderColor", default.borderColor) else default.borderColor,
+            sidebarWidthRatio = sp.getFloat("sidebarWidthRatio", default.sidebarWidthRatio),
             ratio = sp.getString("ratio", null)?.let { runCatching { CanvasRatio.valueOf(it) }.getOrNull() } ?: default.ratio,
             cornerRadius = sp.getFloat("cornerRadius", default.cornerRadius),
             shadowRadius = sp.getFloat("shadowRadius", default.shadowRadius),

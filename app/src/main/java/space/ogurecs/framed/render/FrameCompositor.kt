@@ -22,10 +22,13 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
+import space.ogurecs.framed.model.BackgroundType
 import space.ogurecs.framed.model.CanvasRatio
+import space.ogurecs.framed.model.CustomFontWeight
 import space.ogurecs.framed.model.ExifData
 import space.ogurecs.framed.model.ExportQuality
 import space.ogurecs.framed.model.FrameConfig
+import space.ogurecs.framed.model.FrameStyle
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -42,6 +45,10 @@ object FrameCompositor {
         exif: ExifData,
         config: FrameConfig
     ): Bitmap {
+        if (config.style == FrameStyle.SIDEBAR_LEFT) {
+            return renderSidebarLeft(context, source, exif, config)
+        }
+
         val srcW = source.width.toFloat()
         val srcH = source.height.toFloat()
         val baseAspect = max(srcW, srcH) / max(1f, min(srcW, srcH))
@@ -92,8 +99,9 @@ object FrameCompositor {
             else -> 0f
         }
 
+        val polaroidExtraChin = if (config.style == FrameStyle.POLAROID_VINTAGE) refDim * 0.08f else 0f
         val baseGap = if (footerHeight > 0f) refDim * 0.045f else 0f
-        val gapBelowPhoto = if (footerHeight > 0f) max(0f, baseGap + refDim * (config.footerVerticalOffset / 200f)) else 0f
+        val gapBelowPhoto = if (footerHeight > 0f) max(0f, baseGap + polaroidExtraChin + refDim * (config.footerVerticalOffset / 200f)) else polaroidExtraChin
 
         val totalContentW = srcW
         val totalContentH = srcH + gapBelowPhoto + footerHeight
@@ -129,8 +137,8 @@ object FrameCompositor {
         }
         val canvas = Canvas(output)
 
-        // 1. Draw blurred background
-        drawBlurredBackground(canvas, source, canvasW, canvasH, config)
+        // 1. Draw background (Solid with anti-banding TPDF dither or blurred photo)
+        drawBackground(canvas, source, canvasW, canvasH, config)
 
         // 2. Position the main photo and footer with pure vertical and horizontal symmetry
         val photoLeft = (canvasW - srcW) / 2f
@@ -154,7 +162,18 @@ object FrameCompositor {
         canvas.drawBitmap(source, null, photoRect, Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
         canvas.restore()
 
-        // 5. Draw Footer / Metadata block with consistent gap and optical baseline alignment
+        // 5. Draw border if enabled
+        if (config.borderWidth > 0f) {
+            val borderPx = max(1f, (config.borderWidth / 1000f) * refDim)
+            val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = borderPx
+                color = config.borderColor.toInt()
+            }
+            canvas.drawRoundRect(photoRect, cornerPx, cornerPx, borderPaint)
+        }
+
+        // 6. Draw Footer / Metadata block with consistent gap and optical baseline alignment
         if (footerHeight > 0f) {
             val footerCenterY = photoRect.bottom + gapBelowPhoto + (footerHeight / 2f)
             drawMetadataFooter(
@@ -184,6 +203,229 @@ object FrameCompositor {
         return output
     }
 
+    private fun renderSidebarLeft(
+        context: Context,
+        source: Bitmap,
+        exif: ExifData,
+        config: FrameConfig
+    ): Bitmap {
+        val srcW = source.width.toFloat()
+        val srcH = source.height.toFloat()
+        val baseAspect = max(srcW, srcH) / max(1f, min(srcW, srcH))
+        val refDim = min(srcW, srcH) * minOf(1.0f, baseAspect / 1.5f)
+
+        val targetRatio = when (config.ratio) {
+            CanvasRatio.RATIO_4_5 -> 4f / 5f
+            CanvasRatio.RATIO_9_16 -> 9f / 16f
+            CanvasRatio.RATIO_1_1 -> 1f
+            CanvasRatio.RATIO_3_4 -> 3f / 4f
+            CanvasRatio.RATIO_16_9 -> 16f / 9f
+            CanvasRatio.ORIGINAL -> srcW / srcH
+        }
+
+        val sidebarRatio = config.sidebarWidthRatio.coerceIn(0.15f, 0.35f)
+        val scale = config.photoScale.coerceIn(0.65f, 0.98f)
+
+        val photoSlotW = srcW / scale
+        val photoSlotH = srcH / scale
+        val canvasWNeeded = photoSlotW / (1f - sidebarRatio)
+        val canvasHNeeded = photoSlotH
+
+        val canvasW: Int
+        val canvasH: Int
+        if ((canvasWNeeded / canvasHNeeded) > targetRatio) {
+            canvasW = canvasWNeeded.roundToInt()
+            canvasH = (canvasWNeeded / targetRatio).roundToInt()
+        } else {
+            canvasH = canvasHNeeded.roundToInt()
+            canvasW = (canvasHNeeded * targetRatio).roundToInt()
+        }
+
+        val output = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && source.colorSpace != null) {
+            Bitmap.createBitmap(canvasW, canvasH, Bitmap.Config.ARGB_8888, true, source.colorSpace!!)
+        } else {
+            Bitmap.createBitmap(canvasW, canvasH, Bitmap.Config.ARGB_8888)
+        }
+        val canvas = Canvas(output)
+
+        // 1. Draw background
+        drawBackground(canvas, source, canvasW, canvasH, config)
+
+        val sidebarW = canvasW * sidebarRatio
+        val photoAreaW = canvasW - sidebarW
+        val photoAreaH = canvasH.toFloat()
+
+        // 2. Fit photo inside remaining right area
+        val availW = photoAreaW * scale
+        val availH = photoAreaH * scale
+        val fitScale = minOf(1f, minOf(availW / srcW, availH / srcH))
+        val drawW = srcW * fitScale
+        val drawH = srcH * fitScale
+
+        val photoLeft = sidebarW + (photoAreaW - drawW) / 2f
+        val photoTop = (photoAreaH - drawH) / 2f
+        val photoRect = RectF(photoLeft, photoTop, photoLeft + drawW, photoTop + drawH)
+
+        val cornerPx = (config.cornerRadius / 1000f) * refDim * fitScale
+        val blurPx = (config.shadowRadius / 1000f) * refDim * fitScale
+        val spreadPx = (config.shadowSpread / 1000f) * refDim * fitScale
+
+        // 3. Shadow
+        drawSoftShadow(canvas, photoRect, cornerPx, blurPx, spreadPx, config.shadowAlpha, config.shadowOffsetY)
+
+        // 4. Photo
+        val clipPath = Path().apply {
+            addRoundRect(photoRect, cornerPx, cornerPx, Path.Direction.CW)
+        }
+        canvas.save()
+        canvas.clipPath(clipPath)
+        canvas.drawBitmap(source, null, photoRect, Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG))
+        canvas.restore()
+
+        // 5. Border
+        if (config.borderWidth > 0f) {
+            val borderPx = max(1f, (config.borderWidth / 1000f) * refDim * fitScale)
+            val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = borderPx
+                color = config.borderColor.toInt()
+            }
+            canvas.drawRoundRect(photoRect, cornerPx, cornerPx, borderPaint)
+        }
+
+        // 6. Draw Left Sidebar Content
+        drawSidebarContent(
+            context = context,
+            canvas = canvas,
+            sidebarW = sidebarW,
+            photoRect = photoRect,
+            refDim = refDim * fitScale,
+            config = config,
+            exif = exif
+        )
+
+        return output
+    }
+
+    private fun drawSidebarContent(
+        context: Context,
+        canvas: Canvas,
+        sidebarW: Float,
+        photoRect: RectF,
+        refDim: Float,
+        config: FrameConfig,
+        exif: ExifData
+    ) {
+        val isLight = config.bgType == BackgroundType.SOLID_COLOR && isColorLight(config.solidColor.toInt())
+        val primaryColor = if (isLight) Color.parseColor("#11141A") else Color.WHITE
+        val secondaryColor = if (isLight) Color.parseColor("#475569") else Color.argb(220, 255, 255, 255)
+        val mutedColor = if (isLight) Color.parseColor("#94A3B8") else Color.argb(140, 255, 255, 255)
+
+        val brandRes = exif.brand.iconRes
+        val modelText = if (config.showModel) exif.model else ""
+        val brandName = if (brandRes == null && config.showLogo) exif.brand.displayName else ""
+        val hasLogo = config.showLogo && brandRes != null
+
+        val topY = photoRect.top
+        val bottomY = photoRect.bottom
+        val centerX = sidebarW / 2f
+
+        val titleSize = refDim * (config.fontSizeLine1 / 1000f) * config.textMasterScale * 1.05f
+        val paramsSize = refDim * (config.fontSizeLine2 / 1000f) * config.textMasterScale * 0.95f
+        val lineSpacing = titleSize * 1.35f
+
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = primaryColor
+            letterSpacing = config.letterSpacing
+            textAlign = Paint.Align.CENTER
+        }
+
+        var currentY = topY + refDim * 0.04f
+
+        // 1. Brand Logo
+        if (config.showLogo && brandRes != null) {
+            val drawable = ContextCompat.getDrawable(context, brandRes)
+            if (drawable != null) {
+                applyLogoColorFilter(drawable, config.logoColorMode, exif.brand, isLight)
+                val logoH = (titleSize * 1.4f * config.logoScale).roundToInt()
+                val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
+                val logoW = (logoH * aspect).roundToInt()
+                val logoLeft = (centerX - logoW / 2f).roundToInt()
+                drawable.setBounds(logoLeft, currentY.roundToInt(), (logoLeft + logoW), (currentY + logoH).roundToInt())
+                drawable.draw(canvas)
+                currentY += logoH + lineSpacing * 0.5f
+            }
+        } else if (brandName.isNotBlank()) {
+            textPaint.typeface = getTypeface(context, config.fontOption, CustomFontWeight.BOLD)
+            textPaint.textSize = titleSize * 1.1f
+            textPaint.color = primaryColor
+            canvas.drawText(brandName, centerX, currentY + titleSize, textPaint)
+            currentY += titleSize + lineSpacing * 0.5f
+        }
+
+        // 2. Camera Model
+        if (modelText.isNotBlank()) {
+            textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+            textPaint.textSize = titleSize
+            textPaint.color = primaryColor
+            canvas.drawText(modelText, centerX, currentY + titleSize * 0.9f, textPaint)
+            currentY += titleSize + lineSpacing * 0.4f
+        }
+
+        // 3. Subtle accent divider dash
+        val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = mutedColor
+            strokeWidth = max(1.5f, refDim * 0.003f)
+        }
+        val dividerW = sidebarW * 0.28f
+        currentY += lineSpacing * 0.4f
+        canvas.drawLine(centerX - dividerW / 2f, currentY, centerX + dividerW / 2f, currentY, dividerPaint)
+        currentY += lineSpacing * 0.7f
+
+        // 4. Exposure parameters vertically stacked
+        if (config.showParams) {
+            val paramsWeight = if (config.fontWeight == CustomFontWeight.BOLD) CustomFontWeight.MEDIUM else CustomFontWeight.REGULAR
+            textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
+            textPaint.textSize = paramsSize
+            textPaint.color = secondaryColor
+
+            val paramsList = mutableListOf<String>()
+            if (exif.focalLength.isNotBlank()) paramsList.add(exif.focalLength)
+            if (exif.aperture.isNotBlank()) paramsList.add(exif.aperture)
+            if (exif.shutterSpeed.isNotBlank()) paramsList.add(exif.shutterSpeed)
+            if (exif.iso.isNotBlank()) paramsList.add(exif.iso)
+
+            if (paramsList.isEmpty() && exif.formattedParams.isNotBlank()) {
+                paramsList.addAll(exif.formattedParams.split("  ").filter { it.isNotBlank() })
+            }
+
+            paramsList.forEach { param ->
+                canvas.drawText(param.trim(), centerX, currentY + paramsSize * 0.85f, textPaint)
+                currentY += lineSpacing * 0.95f
+            }
+        }
+
+        // 5. Lens and Date at the bottom of the sidebar
+        val bottomItems = mutableListOf<String>()
+        if (config.showLens && exif.lens.isNotBlank()) bottomItems.add(exif.lens)
+        if (config.showDate && exif.dateTime.isNotBlank()) bottomItems.add(exif.dateTime)
+
+        if (bottomItems.isNotEmpty()) {
+            val bottomPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = mutedColor
+                letterSpacing = config.letterSpacing
+                textAlign = Paint.Align.CENTER
+                textSize = paramsSize * 0.88f
+                typeface = getTypeface(context, config.fontOption, CustomFontWeight.REGULAR)
+            }
+            var bY = bottomY - refDim * 0.02f
+            bottomItems.reversed().forEach { item ->
+                canvas.drawText(item.trim(), centerX, bY, bottomPaint)
+                bY -= lineSpacing * 0.85f
+            }
+        }
+    }
+
     @Volatile
     private var ditherTileShader: BitmapShader? = null
 
@@ -211,6 +453,30 @@ object FrameCompositor {
         return Paint(Paint.DITHER_FLAG).apply {
             this.shader = shader
             this.isDither = true
+        }
+    }
+
+    fun isColorLight(colorInt: Int): Boolean {
+        val r = (colorInt shr 16) and 0xFF
+        val g = (colorInt shr 8) and 0xFF
+        val b = colorInt and 0xFF
+        val luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+        return luminance > 0.60
+    }
+
+    private fun drawBackground(
+        canvas: Canvas,
+        source: Bitmap,
+        cw: Int,
+        ch: Int,
+        config: FrameConfig
+    ) {
+        if (config.bgType == BackgroundType.SOLID_COLOR) {
+            canvas.drawColor(config.solidColor.toInt())
+            // Anti-banding dither pass prevents posterization in lossy video and social media encoders
+            canvas.drawRect(0f, 0f, cw.toFloat(), ch.toFloat(), getDitherPaint())
+        } else {
+            drawBlurredBackground(canvas, source, cw, ch, config)
         }
     }
 
@@ -336,8 +602,13 @@ object FrameCompositor {
         config: FrameConfig,
         exif: ExifData
     ) {
+        val isLight = config.bgType == BackgroundType.SOLID_COLOR && isColorLight(config.solidColor.toInt())
+        val primaryTextColor = if (isLight) Color.parseColor("#11141A") else Color.WHITE
+        val secondaryTextColor = if (isLight) Color.parseColor("#475569") else Color.argb(235, 255, 255, 255)
+        val tertiaryTextColor = if (isLight) Color.parseColor("#64748B") else Color.argb(200, 255, 255, 255)
+
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
+            color = primaryTextColor
             letterSpacing = config.letterSpacing
         }
 
@@ -375,7 +646,7 @@ object FrameCompositor {
                     if (hasLogo && brandRes != null) {
                         val drawable = ContextCompat.getDrawable(context, brandRes)
                         if (drawable != null) {
-                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
+                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand, isLight)
                             val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
                             val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
                             val logoW = (logoH * aspect).roundToInt()
@@ -387,6 +658,7 @@ object FrameCompositor {
                     } else if (brandName.isNotBlank()) {
                         textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
                         textPaint.textSize = titleSize
+                        textPaint.color = primaryTextColor
                         textPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(brandName, currentX, splitBaselineY, textPaint)
                         currentX += textPaint.measureText(brandName) + logoGap
@@ -395,6 +667,7 @@ object FrameCompositor {
                     if (modelText.isNotBlank()) {
                         textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
                         textPaint.textSize = titleSize
+                        textPaint.color = primaryTextColor
                         textPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(modelText, currentX, splitBaselineY, textPaint)
                     }
@@ -404,7 +677,7 @@ object FrameCompositor {
                     textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
                     textPaint.textSize = paramsSize
                     textPaint.textAlign = Paint.Align.RIGHT
-                    textPaint.color = Color.argb(235, 255, 255, 255)
+                    textPaint.color = secondaryTextColor
                     canvas.drawText(line2Text.trim(), photoRect.right + hOffset, splitBaselineY, textPaint)
                 }
 
@@ -413,7 +686,7 @@ object FrameCompositor {
                     textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
                     textPaint.textSize = paramsSize * 0.95f
                     textPaint.textAlign = Paint.Align.RIGHT
-                    textPaint.color = Color.argb(200, 255, 255, 255)
+                    textPaint.color = tertiaryTextColor
                     canvas.drawText(line3Text.trim(), photoRect.right + hOffset, line3Y, textPaint)
                 }
             }
@@ -430,7 +703,7 @@ object FrameCompositor {
                     if (hasLogo && brandRes != null) {
                         val drawable = ContextCompat.getDrawable(context, brandRes)
                         if (drawable != null) {
-                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
+                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand, isLight)
                             val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
                             val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
                             val logoW = (logoH * aspect).roundToInt()
@@ -442,6 +715,7 @@ object FrameCompositor {
                     } else if (brandName.isNotBlank()) {
                         textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
                         textPaint.textSize = titleSize
+                        textPaint.color = primaryTextColor
                         textPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(brandName, currentX, line1Y, textPaint)
                         currentX += textPaint.measureText(brandName) + logoGap
@@ -450,6 +724,7 @@ object FrameCompositor {
                     if (modelText.isNotBlank()) {
                         textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
                         textPaint.textSize = titleSize
+                        textPaint.color = primaryTextColor
                         textPaint.textAlign = Paint.Align.LEFT
                         canvas.drawText(modelText, currentX, line1Y, textPaint)
                     }
@@ -464,7 +739,7 @@ object FrameCompositor {
                     textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
                     textPaint.textSize = paramsSize
                     textPaint.textAlign = Paint.Align.LEFT
-                    textPaint.color = Color.argb(235, 255, 255, 255)
+                    textPaint.color = secondaryTextColor
                     canvas.drawText(line2Text, photoRect.left + hOffset, line2Y, textPaint)
                 }
 
@@ -473,7 +748,7 @@ object FrameCompositor {
                     textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
                     textPaint.textSize = paramsSize * 0.92f
                     textPaint.textAlign = Paint.Align.LEFT
-                    textPaint.color = Color.argb(200, 255, 255, 255)
+                    textPaint.color = tertiaryTextColor
                     canvas.drawText(line3Text, photoRect.left + hOffset, line3Y, textPaint)
                 }
             }
@@ -489,7 +764,7 @@ object FrameCompositor {
                     if (hasLogo && brandRes != null) {
                         val drawable = ContextCompat.getDrawable(context, brandRes)
                         if (drawable != null) {
-                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
+                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand, isLight)
                             val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
                             val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
                             val logoW = (logoH * aspect).roundToInt()
@@ -498,6 +773,7 @@ object FrameCompositor {
                             if (modelText.isNotBlank()) {
                                 textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
                                 textPaint.textSize = titleSize
+                                textPaint.color = primaryTextColor
                                 val modelW = textPaint.measureText(modelText)
                                 val totalW = logoW + logoGap + modelW
 
@@ -516,6 +792,7 @@ object FrameCompositor {
                     } else if (brandName.isNotBlank() || modelText.isNotBlank()) {
                         textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
                         textPaint.textSize = titleSize
+                        textPaint.color = primaryTextColor
                         textPaint.textAlign = Paint.Align.CENTER
                         val combined = listOf(brandName, modelText).filter { it.isNotBlank() }.joinToString("  ")
                         canvas.drawText(combined, cw / 2f + hOffset, line1Y, textPaint)
@@ -531,7 +808,7 @@ object FrameCompositor {
                     textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
                     textPaint.textSize = paramsSize
                     textPaint.textAlign = Paint.Align.CENTER
-                    textPaint.color = Color.argb(235, 255, 255, 255)
+                    textPaint.color = secondaryTextColor
                     canvas.drawText(line2Text, cw / 2f + hOffset, line2Y, textPaint)
                 }
 
@@ -540,18 +817,23 @@ object FrameCompositor {
                     textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
                     textPaint.textSize = paramsSize * 0.92f
                     textPaint.textAlign = Paint.Align.CENTER
-                    textPaint.color = Color.argb(200, 255, 255, 255)
+                    textPaint.color = tertiaryTextColor
                     canvas.drawText(line3Text, cw / 2f + hOffset, line3Y, textPaint)
                 }
             }
         }
     }
 
-    private fun applyLogoColorFilter(drawable: android.graphics.drawable.Drawable, mode: space.ogurecs.framed.model.LogoColorMode, brand: space.ogurecs.framed.model.CameraBrand) {
+    private fun applyLogoColorFilter(
+        drawable: android.graphics.drawable.Drawable,
+        mode: space.ogurecs.framed.model.LogoColorMode,
+        brand: space.ogurecs.framed.model.CameraBrand,
+        isLight: Boolean = false
+    ) {
         val logoColor: Int? = when (mode) {
-            space.ogurecs.framed.model.LogoColorMode.WHITE -> Color.WHITE
+            space.ogurecs.framed.model.LogoColorMode.WHITE -> if (isLight) Color.BLACK else Color.WHITE
             space.ogurecs.framed.model.LogoColorMode.BLACK -> Color.BLACK
-            space.ogurecs.framed.model.LogoColorMode.MATCH_TEXT -> Color.WHITE
+            space.ogurecs.framed.model.LogoColorMode.MATCH_TEXT -> if (isLight) Color.parseColor("#11141A") else Color.WHITE
             space.ogurecs.framed.model.LogoColorMode.BRAND -> when (brand) {
                 space.ogurecs.framed.model.CameraBrand.CANON -> Color.parseColor("#CC0000")
                 space.ogurecs.framed.model.CameraBrand.SONY,
@@ -560,7 +842,7 @@ object FrameCompositor {
                 space.ogurecs.framed.model.CameraBrand.LUMIX -> Color.parseColor("#E60012")
                 space.ogurecs.framed.model.CameraBrand.LEICA -> null
                 space.ogurecs.framed.model.CameraBrand.FUJIFILM -> null
-                else -> Color.WHITE
+                else -> if (isLight) Color.BLACK else Color.WHITE
             }
         }
 

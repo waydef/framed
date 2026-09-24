@@ -77,5 +77,78 @@ class FramedModelTest {
         assertEquals("без потерь", ExportQuality.ORIGINAL_100.badge)
         assertEquals("2.5K • чётко", ExportQuality.TIKTOK_OPTIMIZED.badge)
     }
+
+    @Test
+    fun testFramePresetsCatalog() {
+        val presets = space.ogurecs.framed.model.FramePresets.ALL
+        assertEquals(6, presets.size)
+
+        val ids = presets.map { it.id }.toSet()
+        val expectedIds = setOf(
+            "blur_classic",
+            "studio_passepartout",
+            "sidebar_left",
+            "minimal_fineart",
+            "polaroid_vintage",
+            "editorial_split"
+        )
+        assertEquals(expectedIds, ids)
+
+        presets.forEach { preset ->
+            org.junit.Assert.assertTrue(preset.title.isNotEmpty())
+            org.junit.Assert.assertTrue(preset.subtitle.isNotEmpty())
+            org.junit.Assert.assertNotNull(preset.config)
+            org.junit.Assert.assertEquals(preset.style, preset.config.style)
+        }
+    }
+
+    @Test
+    fun testSolidColorPresets() {
+        val colors = space.ogurecs.framed.model.SolidColorPresets.ALL
+        assertEquals(7, colors.size)
+        org.junit.Assert.assertTrue(colors.any { it.colorLong == 0xFF0A0C10L })
+        org.junit.Assert.assertTrue(colors.any { it.colorLong == 0xFFF8F9FAL })
+        org.junit.Assert.assertTrue(colors.any { it.colorLong == 0xFF000000L })
+        org.junit.Assert.assertTrue(colors.any { it.colorLong == 0xFFFAF8F5L })
+        org.junit.Assert.assertTrue(colors.any { it.colorLong == 0xFF181C24L })
+        org.junit.Assert.assertTrue(colors.any { it.colorLong == 0xFF0E131FL })
+        org.junit.Assert.assertTrue(colors.any { it.colorLong == 0xFF1A221EL })
+    }
+
+    @Test
+    fun testFrameConfig20Fields() {
+        val defaultConfig = FrameConfig()
+        assertEquals(space.ogurecs.framed.model.FrameStyle.BLUR_CLASSIC, defaultConfig.style)
+        assertEquals(space.ogurecs.framed.model.BackgroundType.BLUR, defaultConfig.bgType)
+        assertEquals(0xFF0A0C10L, defaultConfig.solidColor)
+        assertEquals(0f, defaultConfig.borderWidth)
+        assertEquals(0.22f, defaultConfig.sidebarWidthRatio)
+
+        val customConfig = defaultConfig.copy(
+            style = space.ogurecs.framed.model.FrameStyle.SIDEBAR_LEFT,
+            bgType = space.ogurecs.framed.model.BackgroundType.SOLID_COLOR,
+            solidColor = 0xFFF8F9FAL,
+            borderWidth = 1.5f,
+            sidebarWidthRatio = 0.28f
+        )
+        assertEquals(space.ogurecs.framed.model.FrameStyle.SIDEBAR_LEFT, customConfig.style)
+        assertEquals(space.ogurecs.framed.model.BackgroundType.SOLID_COLOR, customConfig.bgType)
+        assertEquals(0xFFF8F9FAL, customConfig.solidColor)
+        assertEquals(1.5f, customConfig.borderWidth)
+        assertEquals(0.28f, customConfig.sidebarWidthRatio)
+    }
+
+    @Test
+    fun testColorLuminanceDetection() {
+        val isLightWhite = space.ogurecs.framed.render.FrameCompositor.isColorLight(0xFFFFFFFF.toInt())
+        val isLightStudioWhite = space.ogurecs.framed.render.FrameCompositor.isColorLight(0xFFF8F9FA.toInt())
+        val isLightBlack = space.ogurecs.framed.render.FrameCompositor.isColorLight(0xFF000000.toInt())
+        val isLightObsidian = space.ogurecs.framed.render.FrameCompositor.isColorLight(0xFF0A0C10.toInt())
+
+        org.junit.Assert.assertTrue(isLightWhite)
+        org.junit.Assert.assertTrue(isLightStudioWhite)
+        org.junit.Assert.assertFalse(isLightBlack)
+        org.junit.Assert.assertFalse(isLightObsidian)
+    }
 }
 

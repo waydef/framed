@@ -48,15 +48,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.RotateLeft
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LinearScale
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tune
@@ -124,7 +128,9 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.ui.graphics.Brush
 import space.ogurecs.framed.R
+import space.ogurecs.framed.model.BackgroundType
 import space.ogurecs.framed.model.CameraBrand
 import space.ogurecs.framed.model.CanvasRatio
 import space.ogurecs.framed.model.CustomFontWeight
@@ -132,7 +138,11 @@ import space.ogurecs.framed.model.ExifData
 import space.ogurecs.framed.model.ExportQuality
 import space.ogurecs.framed.model.FontOption
 import space.ogurecs.framed.model.FrameConfig
+import space.ogurecs.framed.model.FramePreset
+import space.ogurecs.framed.model.FramePresets
+import space.ogurecs.framed.model.FrameStyle
 import space.ogurecs.framed.model.LogoColorMode
+import space.ogurecs.framed.model.SolidColorPresets
 import space.ogurecs.framed.parser.ExifParser
 import space.ogurecs.framed.render.FrameCompositor
 import space.ogurecs.framed.util.ConfigStorage
@@ -311,6 +321,20 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
         containerColor = darkBg,
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    if (fullBitmap != null) {
+                        IconButton(onClick = {
+                            HapticFeedback.click(context)
+                            showExitDialog = true
+                        }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back_to_presets),
+                                tint = Color.White
+                            )
+                        }
+                    }
+                },
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -436,76 +460,24 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                 contentAlignment = Alignment.Center
             ) {
                 if (fullBitmap == null) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth(0.92f)
-                            .padding(16.dp),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = cardSurface)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(28.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(76.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF232733)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    painter = painterResource(R.drawable.ic_framed_logo),
-                                    contentDescription = null,
-                                    tint = accentColor,
-                                    modifier = Modifier.size(42.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(18.dp))
-                            Text(
-                                text = stringResource(R.string.welcome_title),
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White
+                    PresetShowcase(
+                        onSelectPreset = { preset ->
+                            HapticFeedback.click(context)
+                            config = preset.config
+                            multiplePhotosPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = stringResource(R.string.welcome_desc),
-                                fontSize = 13.sp,
-                                color = Color(0xFF94A3B8),
-                                textAlign = TextAlign.Center
+                        },
+                        onQuickPick = {
+                            HapticFeedback.click(context)
+                            multiplePhotosPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             )
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Button(
-                                onClick = {
-                                    HapticFeedback.click(context)
-                                    multiplePhotosPicker.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                    )
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = accentColor,
-                                    contentColor = onAccentColor
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AddPhotoAlternate,
-                                    contentDescription = null,
-                                    tint = onAccentColor,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = stringResource(R.string.gallery_open),
-                                    fontWeight = FontWeight.Medium,
-                                    color = onAccentColor
-                                )
-                            }
-                        }
-                    }
+                        },
+                        accentColor = accentColor,
+                        onAccentColor = onAccentColor,
+                        cardSurface = cardSurface
+                    )
                 } else if (isProcessing) {
                     CircularProgressIndicator(color = accentColor)
                 } else {
@@ -556,8 +528,8 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                         HapticFeedback.tick(context)
                                         selectedTab = 0
                                     },
-                                    text = { Text(stringResource(R.string.tab_format), fontSize = 12.sp, fontWeight = FontWeight.Medium) },
-                                    icon = { Icon(Icons.Default.AspectRatio, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                                    text = { Text(stringResource(R.string.tab_concept), fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                    icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) }
                                 )
                                 Tab(
                                     selected = selectedTab == 1,
@@ -565,8 +537,8 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                         HapticFeedback.tick(context)
                                         selectedTab = 1
                                     },
-                                    text = { Text(stringResource(R.string.tab_style), fontSize = 12.sp, fontWeight = FontWeight.Medium) },
-                                    icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                                    text = { Text(stringResource(R.string.tab_geometry), fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                    icon = { Icon(Icons.Default.AspectRatio, contentDescription = null, modifier = Modifier.size(14.dp)) }
                                 )
                                 Tab(
                                     selected = selectedTab == 2,
@@ -574,7 +546,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                         HapticFeedback.tick(context)
                                         selectedTab = 2
                                     },
-                                    text = { Text(stringResource(R.string.tab_spacing), fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                    text = { Text(stringResource(R.string.tab_typography), fontSize = 12.sp, fontWeight = FontWeight.Medium) },
                                     icon = { Icon(Icons.Default.LinearScale, contentDescription = null, modifier = Modifier.size(14.dp)) }
                                 )
                                 Tab(
@@ -591,14 +563,14 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(175.dp)
+                                    .height(180.dp)
                                     .verticalScroll(rememberScrollState())
                                     .padding(horizontal = 16.dp, vertical = 10.dp)
                             ) {
                                 when (selectedTab) {
-                                    0 -> FormatSettings(config = config, accent = accentColor, onConfigChange = { config = it })
-                                    1 -> StyleSettings(config = config, accent = accentColor, onConfigChange = { config = it })
-                                    2 -> SpacingSettings(config = config, accent = accentColor, onConfigChange = { config = it })
+                                    0 -> ConceptSettings(config = config, accent = accentColor, onConfigChange = { config = it })
+                                    1 -> FormatSettings(config = config, accent = accentColor, onConfigChange = { config = it })
+                                    2 -> StyleSettings(config = config, accent = accentColor, onConfigChange = { config = it })
                                     3 -> MetaSettings(
                                         exif = exifData,
                                         config = config,
@@ -803,6 +775,715 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
 }
 
 @Composable
+private fun PresetShowcase(
+    onSelectPreset: (FramePreset) -> Unit,
+    onQuickPick: () -> Unit,
+    accentColor: Color,
+    onAccentColor: Color,
+    cardSurface: Color
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        // Showcase Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = stringResource(R.string.home_showcase_title),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = accentColor.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = "2.0",
+                            color = accentColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = stringResource(R.string.home_showcase_desc),
+                    fontSize = 12.sp,
+                    color = Color(0xFF94A3B8)
+                )
+            }
+
+            OutlinedButton(
+                onClick = onQuickPick,
+                shape = RoundedCornerShape(10.dp),
+                border = BorderStroke(1.dp, Color(0xFF333B4E)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AddPhotoAlternate,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = accentColor
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = stringResource(R.string.btn_quick_load), fontSize = 12.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Grid of Presets
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 300.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(bottom = 24.dp),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            items(FramePresets.ALL) { preset ->
+                PresetCard(
+                    preset = preset,
+                    onSelect = { onSelectPreset(preset) },
+                    accentColor = accentColor,
+                    onAccentColor = onAccentColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PresetCard(
+    preset: FramePreset,
+    onSelect: () -> Unit,
+    accentColor: Color,
+    onAccentColor: Color
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF141720)),
+        border = BorderStroke(1.dp, Color(0xFF242A38)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            // 1. Stylized miniature preview
+            PresetMiniaturePreview(preset = preset)
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 2. Title & Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = preset.title,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = accentColor.copy(alpha = 0.14f)
+                ) {
+                    Text(
+                        text = preset.badge,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = accentColor,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // 3. Subtitle
+            Text(
+                text = preset.subtitle,
+                fontSize = 12.sp,
+                color = Color(0xFF8E9BAE),
+                lineHeight = 16.sp,
+                modifier = Modifier.height(34.dp)
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 4. Action Button: «Загрузить фото для этой рамки»
+            Button(
+                onClick = onSelect,
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accentColor,
+                    contentColor = onAccentColor
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AddPhotoAlternate,
+                    contentDescription = null,
+                    tint = onAccentColor,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.btn_load_photo_for_frame),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = onAccentColor
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PresetMiniaturePreview(preset: FramePreset) {
+    val bgModifier = when (preset.config.bgType) {
+        BackgroundType.SOLID_COLOR -> Modifier.background(Color(preset.config.solidColor))
+        BackgroundType.BLUR -> Modifier.background(
+            Brush.radialGradient(
+                listOf(Color(0xFF334155), Color(0xFF1E293B), Color(0xFF0F172A))
+            )
+        )
+    }
+
+    val isLightBg = preset.config.bgType == BackgroundType.SOLID_COLOR && FrameCompositor.isColorLight(preset.config.solidColor.toInt())
+    val previewTextColor = if (isLightBg) Color(0xFF1E293B) else Color.White
+    val previewSubColor = if (isLightBg) Color(0xFF64748B) else Color(0x99FFFFFF)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(140.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .then(bgModifier)
+            .border(1.dp, Color(0x1AFFFFFF), RoundedCornerShape(10.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        when (preset.style) {
+            FrameStyle.SIDEBAR_LEFT -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Simulated left sidebar
+                    Column(
+                        modifier = Modifier
+                            .width(54.dp)
+                            .padding(end = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(previewTextColor.copy(alpha = 0.8f))
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(32.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(previewTextColor.copy(alpha = 0.7f))
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(20.dp)
+                                .height(1.dp)
+                                .background(previewSubColor.copy(alpha = 0.5f))
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(28.dp)
+                                .height(2.5.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(previewSubColor)
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(24.dp)
+                                .height(2.5.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(previewSubColor)
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Box(
+                            modifier = Modifier
+                                .width(26.dp)
+                                .height(2.5.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(previewSubColor)
+                        )
+                    }
+
+                    // Simulated photo in right slot
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(115.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF2B3245), Color(0xFF1E2230))
+                                )
+                            )
+                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            tint = Color(0x66FFFFFF),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
+            FrameStyle.POLAROID_VINTAGE -> {
+                Column(
+                    modifier = Modifier
+                        .width(135.dp)
+                        .height(125.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFFFAF8F5))
+                        .border(1.dp, Color(0x22000000), RoundedCornerShape(4.dp))
+                        .padding(top = 8.dp, start = 8.dp, end = 8.dp, bottom = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(78.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF263238), Color(0xFF192024))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            tint = Color(0x44FFFFFF),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Box(
+                        modifier = Modifier
+                            .width(50.dp)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(Color(0xFF2A2D34))
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(36.dp)
+                            .height(2.dp)
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(Color(0xFF717786))
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+            }
+            FrameStyle.STUDIO_PASSEPARTOUT -> {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(130.dp)
+                            .height(86.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF242A38), Color(0xFF161922))
+                                )
+                            )
+                            .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            tint = Color(0x66FFFFFF),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(previewTextColor.copy(alpha = 0.8f))
+                        )
+                        Box(
+                            modifier = Modifier
+                                .width(36.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(previewTextColor.copy(alpha = 0.7f))
+                        )
+                        Box(
+                            modifier = Modifier
+                                .width(42.dp)
+                                .height(2.5.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(previewSubColor)
+                        )
+                    }
+                }
+            }
+            FrameStyle.MINIMAL_FINEART -> {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(132.dp)
+                            .height(88.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(Color(0xFF1A1D24))
+                            .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(2.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            tint = Color(0x55FFFFFF),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(7.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(60.dp)
+                            .height(2.5.dp)
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(previewTextColor.copy(alpha = 0.75f))
+                    )
+                }
+            }
+            FrameStyle.EDITORIAL_SPLIT -> {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(140.dp)
+                            .height(86.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF283042), Color(0xFF1A1E2B))
+                                )
+                            )
+                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            tint = Color(0x66FFFFFF),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(7.dp))
+                    Row(
+                        modifier = Modifier.width(140.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(40.dp)
+                                .height(3.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(previewTextColor.copy(alpha = 0.8f))
+                        )
+                        Box(
+                            modifier = Modifier
+                                .width(46.dp)
+                                .height(2.5.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(previewSubColor)
+                        )
+                    }
+                }
+            }
+            FrameStyle.BLUR_CLASSIC -> {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(136.dp)
+                            .height(86.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF323B50), Color(0xFF1E2330))
+                                )
+                            )
+                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            tint = Color(0x66FFFFFF),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(52.dp)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(previewTextColor.copy(alpha = 0.8f))
+                    )
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(72.dp)
+                            .height(2.5.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(previewSubColor)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConceptSettings(
+    config: FrameConfig,
+    accent: Color,
+    onConfigChange: (FrameConfig) -> Unit
+) {
+    val context = LocalContext.current
+
+    // 1. Frame Style Concept Selector
+    Text(
+        text = stringResource(R.string.concept_header),
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        color = Color(0xFF94A3B8)
+    )
+    Spacer(modifier = Modifier.height(6.dp))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        FramePresets.ALL.forEach { preset ->
+            val isSelected = config.style == preset.style
+            FilterChip(
+                selected = isSelected,
+                onClick = {
+                    HapticFeedback.tick(context)
+                    onConfigChange(
+                        config.copy(
+                            style = preset.style,
+                            bgType = preset.config.bgType,
+                            solidColor = preset.config.solidColor,
+                            photoScale = preset.config.photoScale,
+                            cornerRadius = preset.config.cornerRadius,
+                            shadowAlpha = preset.config.shadowAlpha,
+                            shadowRadius = preset.config.shadowRadius,
+                            borderWidth = preset.config.borderWidth,
+                            borderColor = preset.config.borderColor,
+                            sidebarWidthRatio = preset.config.sidebarWidthRatio,
+                            logoColorMode = preset.config.logoColorMode,
+                            fontOption = preset.config.fontOption,
+                            textAlignment = preset.config.textAlignment,
+                            ratio = preset.config.ratio
+                        )
+                    )
+                },
+                label = { Text(preset.title, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = accent,
+                    selectedLabelColor = Color.White,
+                    containerColor = Color(0xFF222631),
+                    labelColor = Color(0xFFCBD5E1)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(14.dp))
+
+    // 2. Background Type (Blur photo vs Solid color)
+    Text(
+        text = stringResource(R.string.bg_type_header),
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        color = Color(0xFF94A3B8)
+    )
+    Spacer(modifier = Modifier.height(6.dp))
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        val isBlur = config.bgType == BackgroundType.BLUR
+        FilterChip(
+            selected = isBlur,
+            onClick = {
+                HapticFeedback.tick(context)
+                onConfigChange(config.copy(bgType = BackgroundType.BLUR))
+            },
+            label = { Text(stringResource(R.string.bg_type_blur), fontSize = 12.sp, fontWeight = if (isBlur) FontWeight.SemiBold else FontWeight.Normal) },
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = accent,
+                selectedLabelColor = Color.White,
+                containerColor = Color(0xFF222631),
+                labelColor = Color(0xFFCBD5E1)
+            ),
+            shape = RoundedCornerShape(8.dp)
+        )
+        val isSolid = config.bgType == BackgroundType.SOLID_COLOR
+        FilterChip(
+            selected = isSolid,
+            onClick = {
+                HapticFeedback.tick(context)
+                onConfigChange(config.copy(bgType = BackgroundType.SOLID_COLOR))
+            },
+            label = { Text(stringResource(R.string.bg_type_solid), fontSize = 12.sp, fontWeight = if (isSolid) FontWeight.SemiBold else FontWeight.Normal) },
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = accent,
+                selectedLabelColor = Color.White,
+                containerColor = Color(0xFF222631),
+                labelColor = Color(0xFFCBD5E1)
+            ),
+            shape = RoundedCornerShape(8.dp)
+        )
+    }
+
+    // 3. Solid Color Palette (visible when SOLID_COLOR is selected)
+    if (config.bgType == BackgroundType.SOLID_COLOR) {
+        Spacer(modifier = Modifier.height(14.dp))
+        Text(
+            text = stringResource(R.string.solid_palette_header),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color(0xFF94A3B8)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SolidColorPresets.ALL.forEach { colorOption ->
+                val isColorSelected = config.solidColor == colorOption.colorLong
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable {
+                        HapticFeedback.tick(context)
+                        val isLight = FrameCompositor.isColorLight(colorOption.colorLong.toInt())
+                        val newLogoMode = if (isLight && config.logoColorMode == LogoColorMode.WHITE) LogoColorMode.BLACK else config.logoColorMode
+                        onConfigChange(config.copy(solidColor = colorOption.colorLong, logoColorMode = newLogoMode))
+                    }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(Color(colorOption.colorLong))
+                            .border(
+                                width = if (isColorSelected) 3.dp else 1.dp,
+                                color = if (isColorSelected) accent else Color(0xFF475569),
+                                shape = CircleShape
+                            )
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = colorOption.label,
+                        fontSize = 10.sp,
+                        color = if (isColorSelected) Color.White else Color(0xFF94A3B8),
+                        fontWeight = if (isColorSelected) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(14.dp))
+
+    // 4. Border / Окантовка
+    SettingSlider(
+        label = stringResource(R.string.border_width),
+        valueText = "${config.borderWidth.toInt()} px",
+        value = config.borderWidth,
+        range = 0f..20f,
+        accent = accent,
+        defaultValue = 0f,
+        step = 1f,
+        onValueChange = { onConfigChange(config.copy(borderWidth = it)) }
+    )
+
+    // 5. Sidebar ratio (if SIDEBAR_LEFT)
+    if (config.style == FrameStyle.SIDEBAR_LEFT) {
+        Spacer(modifier = Modifier.height(8.dp))
+        SettingSlider(
+            label = stringResource(R.string.sidebar_width),
+            valueText = "${(config.sidebarWidthRatio * 100).toInt()}%",
+            value = config.sidebarWidthRatio,
+            range = 0.16f..0.32f,
+            accent = accent,
+            defaultValue = 0.22f,
+            step = 0.01f,
+            onValueChange = { onConfigChange(config.copy(sidebarWidthRatio = it)) }
+        )
+    }
+}
+
+@Composable
 private fun FormatSettings(
     config: FrameConfig,
     accent: Color,
@@ -894,6 +1575,76 @@ private fun FormatSettings(
         defaultValue = 0.95f,
         step = 0.01f,
         onValueChange = { onConfigChange(config.copy(photoScale = it)) }
+    )
+
+    Spacer(modifier = Modifier.height(14.dp))
+
+    SettingSlider(
+        label = stringResource(R.string.corner_radius),
+        valueText = "${config.cornerRadius.toInt()} dp",
+        value = config.cornerRadius,
+        range = 0f..120f,
+        accent = accent,
+        defaultValue = 60f,
+        step = 1f,
+        onValueChange = { onConfigChange(config.copy(cornerRadius = it)) }
+    )
+
+    if (config.bgType == BackgroundType.BLUR) {
+        SettingSlider(
+            label = stringResource(R.string.blur_radius),
+            valueText = "${config.blurRadius.toInt()}%",
+            value = config.blurRadius,
+            range = 10f..60f,
+            accent = accent,
+            defaultValue = 40f,
+            step = 1f,
+            onValueChange = { onConfigChange(config.copy(blurRadius = it)) }
+        )
+    }
+
+    SettingSlider(
+        label = stringResource(R.string.shadow_opacity),
+        valueText = "${(config.shadowAlpha * 100).toInt()}%",
+        value = config.shadowAlpha,
+        range = 0f..0.8f,
+        accent = accent,
+        defaultValue = 0.38f,
+        step = 0.01f,
+        onValueChange = { onConfigChange(config.copy(shadowAlpha = it)) }
+    )
+
+    SettingSlider(
+        label = stringResource(R.string.shadow_blur),
+        valueText = "${config.shadowRadius.toInt()} px",
+        value = config.shadowRadius,
+        range = 0f..90f,
+        accent = accent,
+        defaultValue = 36f,
+        step = 1f,
+        onValueChange = { onConfigChange(config.copy(shadowRadius = it)) }
+    )
+
+    SettingSlider(
+        label = stringResource(R.string.shadow_spread),
+        valueText = "${config.shadowSpread.toInt()} px",
+        value = config.shadowSpread,
+        range = 0f..60f,
+        accent = accent,
+        defaultValue = 8f,
+        step = 1f,
+        onValueChange = { onConfigChange(config.copy(shadowSpread = it)) }
+    )
+
+    SettingSlider(
+        label = stringResource(R.string.shadow_offset),
+        valueText = if (config.shadowOffsetY == 0f) "0%" else "${config.shadowOffsetY.toInt()}%",
+        value = config.shadowOffsetY,
+        range = 0f..80f,
+        accent = accent,
+        defaultValue = 0f,
+        step = 1f,
+        onValueChange = { onConfigChange(config.copy(shadowOffsetY = it)) }
     )
 }
 
@@ -1019,80 +1770,7 @@ private fun StyleSettings(
 
     Spacer(modifier = Modifier.height(14.dp))
 
-    // Sliders
-    SettingSlider(
-        label = stringResource(R.string.corner_radius),
-        valueText = "${config.cornerRadius.toInt()} dp",
-        value = config.cornerRadius,
-        range = 0f..120f,
-        accent = accent,
-        defaultValue = 60f,
-        step = 1f,
-        onValueChange = { onConfigChange(config.copy(cornerRadius = it)) }
-    )
-
-    SettingSlider(
-        label = stringResource(R.string.blur_radius),
-        valueText = "${config.blurRadius.toInt()}%",
-        value = config.blurRadius,
-        range = 10f..60f,
-        accent = accent,
-        defaultValue = 40f,
-        step = 1f,
-        onValueChange = { onConfigChange(config.copy(blurRadius = it)) }
-    )
-
-    SettingSlider(
-        label = stringResource(R.string.shadow_opacity),
-        valueText = "${(config.shadowAlpha * 100).toInt()}%",
-        value = config.shadowAlpha,
-        range = 0f..0.8f,
-        accent = accent,
-        defaultValue = 0.38f,
-        step = 0.01f,
-        onValueChange = { onConfigChange(config.copy(shadowAlpha = it)) }
-    )
-
-    SettingSlider(
-        label = stringResource(R.string.shadow_blur),
-        valueText = "${config.shadowRadius.toInt()} px",
-        value = config.shadowRadius,
-        range = 0f..90f,
-        accent = accent,
-        defaultValue = 36f,
-        step = 1f,
-        onValueChange = { onConfigChange(config.copy(shadowRadius = it)) }
-    )
-
-    SettingSlider(
-        label = stringResource(R.string.shadow_spread),
-        valueText = "${config.shadowSpread.toInt()} px",
-        value = config.shadowSpread,
-        range = 0f..60f,
-        accent = accent,
-        defaultValue = 8f,
-        step = 1f,
-        onValueChange = { onConfigChange(config.copy(shadowSpread = it)) }
-    )
-
-    SettingSlider(
-        label = stringResource(R.string.shadow_offset),
-        valueText = if (config.shadowOffsetY == 0f) "0%" else "${config.shadowOffsetY.toInt()}%",
-        value = config.shadowOffsetY,
-        range = 0f..80f,
-        accent = accent,
-        defaultValue = 0f,
-        step = 1f,
-        onValueChange = { onConfigChange(config.copy(shadowOffsetY = it)) }
-    )
-}
-
-@Composable
-private fun SpacingSettings(
-    config: FrameConfig,
-    accent: Color,
-    onConfigChange: (FrameConfig) -> Unit
-) {
+    // Typography & Spacing Sliders
     SettingSlider(
         label = stringResource(R.string.text_master_scale),
         valueText = String.format(java.util.Locale.US, "%.1fx", config.textMasterScale),
@@ -1194,7 +1872,7 @@ private fun SpacingSettings(
 
     SettingSlider(
         label = stringResource(R.string.letter_spacing),
-        valueText = String.format("%.2f", config.letterSpacing),
+        valueText = String.format(java.util.Locale.US, "%.2f", config.letterSpacing),
         value = config.letterSpacing,
         range = 0f..0.15f,
         accent = accent,

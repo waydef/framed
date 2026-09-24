@@ -74,5 +74,21 @@
     <string name="delete_confirm_title">delete photo?</string>
     <string name="delete_confirm_desc">this photo will be permanently deleted from device storage.</string>
     <string name="cancel">cancel</string>
+    <string name="tab_concept">стиль</string>
+    <string name="tab_geometry">кадр</string>
+    <string name="tab_typography">шрифт</string>
+    <string name="btn_load_photo_for_frame">загрузить фото для этой рамки</string>
+    <string name="btn_quick_load">выбрать фото</string>
+    <string name="home_showcase_title">концепции рамок 2.0</string>
+    <string name="home_showcase_desc">выберите стиль оформления для снимка</string>
+    <string name="bg_type_header">тип фона</string>
+    <string name="bg_type_blur">блюр фото</string>
+    <string name="bg_type_solid">сплошной цвет</string>
+    <string name="solid_palette_header">палитра фона</string>
+    <string name="border_header">окантовка снимка</string>
+    <string name="border_width">толщина окантовки</string>
+    <string name="sidebar_width">ширина сайдбара</string>
+    <string name="concept_header">стиль рамки</string>
+    <string name="back_to_presets">назад к рамкам</string>
     <string name="toast_deleted">photo deleted</string>
 </resources>
