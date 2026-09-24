@@ -1,3 +1,72 @@
 <resources>
     <string name="app_name">framed</string>
+    <string name="tab_format">format</string>
+    <string name="tab_style">style</string>
+    <string name="tab_spacing">spacing</string>
+    <string name="tab_info">info</string>
+
+    <string name="ratio_header">canvas aspect ratio</string>
+    <string name="align_header">text alignment</string>
+    <string name="align_center">center</string>
+    <string name="align_left">left</string>
+    <string name="align_split">along edges</string>
+    <string name="scale_photo">photo scale in frame</string>
+
+    <string name="font_header">font family</string>
+    <string name="weight_header">font weight</string>
+    <string name="logo_color_header">logo color</string>
+    <string name="color_white">white</string>
+    <string name="color_black">black</string>
+    <string name="color_brand">brand</string>
+    <string name="color_text">match text</string>
+    <string name="corner_radius">corner radius</string>
+    <string name="blur_radius">background blur</string>
+    <string name="shadow_opacity">shadow opacity</string>
+    <string name="shadow_blur">shadow blur softness</string>
+    <string name="shadow_spread">shadow spread</string>
+    <string name="shadow_offset">shadow vertical offset</string>
+
+    <string name="text_master_scale">overall text scale</string>
+    <string name="logo_scale">logo scale</string>
+    <string name="font_size_line1">camera title size</string>
+    <string name="font_size_line2">shooting params size</string>
+    <string name="logo_offset_y">logo vertical offset</string>
+    <string name="logo_gap">logo spacing from text</string>
+    <string name="line_spacing">line spacing</string>
+    <string name="text_vertical_offset">text vertical offset</string>
+    <string name="text_horizontal_offset">text horizontal offset</string>
+    <string name="letter_spacing">letter spacing</string>
+
+    <string name="camera_brand_header">camera brand</string>
+    <string name="camera_model_label">camera model</string>
+    <string name="toggle_logo">show logo</string>
+    <string name="toggle_model">show camera model</string>
+    <string name="toggle_params">show exposure params (iso, shutter, f-stop)</string>
+    <string name="toggle_lens">show lens</string>
+    <string name="toggle_date">show capture date</string>
+    <string name="toggle_separate_line">place lens and date on separate line</string>
+
+    <string name="btn_export_original">original 100%</string>
+    <string name="btn_export_social">for social media</string>
+
+    <string name="gallery_title">works gallery</string>
+    <string name="gallery_empty">no saved artwork yet</string>
+    <string name="gallery_open">open gallery</string>
+    <string name="welcome_title">select photos from camera</string>
+    <string name="welcome_desc">batch selection supported: one framing style applies to all shots seamlessly</string>
+
+    <string name="toast_saved_social">photo saved for social media!</string>
+    <string name="toast_saved_social_all">all photos saved for social media!</string>
+    <string name="toast_saved_original">saved in 100% quality!</string>
+    <string name="toast_saved_original_all">all photos saved in 100% quality!</string>
+    <string name="toast_export_error">export error</string>
+
+    <string name="back_dialog_title">exit to main menu?</string>
+    <string name="back_dialog_desc">save current framed photo before closing?</string>
+    <string name="back_dialog_save_original">save 100% original</string>
+    <string name="back_dialog_save_social">save for social media</string>
+    <string name="back_dialog_discard">exit without saving</string>
+    <string name="back_dialog_cancel">cancel</string>
+    <string name="close">close</string>
+    <string name="share">share</string>
 </resources>

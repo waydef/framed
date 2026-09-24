@@ -1,0 +1,72 @@
+<resources>
+    <string name="app_name">framed</string>
+    <string name="tab_format">формат</string>
+    <string name="tab_style">стиль</string>
+    <string name="tab_spacing">отступы</string>
+    <string name="tab_info">инфо</string>
+
+    <string name="ratio_header">соотношение сторон холста</string>
+    <string name="align_header">выравнивание текста</string>
+    <string name="align_center">по центру</string>
+    <string name="align_left">слева</string>
+    <string name="align_split">по краям</string>
+    <string name="scale_photo">масштаб кадра в рамке</string>
+
+    <string name="font_header">шрифт надписи</string>
+    <string name="weight_header">начертание (жирность)</string>
+    <string name="logo_color_header">цвет логотипа</string>
+    <string name="color_white">белый</string>
+    <string name="color_black">чёрный</string>
+    <string name="color_brand">бренд</string>
+    <string name="color_text">текст</string>
+    <string name="corner_radius">скругление углов</string>
+    <string name="blur_radius">размытие фона</string>
+    <string name="shadow_opacity">непрозрачность тени</string>
+    <string name="shadow_blur">мягкость размытия тени</string>
+    <string name="shadow_spread">размер / рассеивание тени</string>
+    <string name="shadow_offset">смещение тени вниз</string>
+
+    <string name="text_master_scale">общий масштаб надписи</string>
+    <string name="logo_scale">размер логотипа</string>
+    <string name="font_size_line1">размер названия камеры</string>
+    <string name="font_size_line2">размер параметров съемки</string>
+    <string name="logo_offset_y">смещение логотипа по вертикали</string>
+    <string name="logo_gap">отступ логотипа от текста</string>
+    <string name="line_spacing">расстояние между строками</string>
+    <string name="text_vertical_offset">положение текста по вертикали</string>
+    <string name="text_horizontal_offset">смещение текста по горизонтали</string>
+    <string name="letter_spacing">межбуквенный интервал</string>
+
+    <string name="camera_brand_header">бренд камеры</string>
+    <string name="camera_model_label">модель камеры</string>
+    <string name="toggle_logo">показывать логотип</string>
+    <string name="toggle_model">показывать модель камеры</string>
+    <string name="toggle_params">показывать параметры (iso, выдержка, f-stop)</string>
+    <string name="toggle_lens">показывать объектив</string>
+    <string name="toggle_date">показывать дату съёмки</string>
+    <string name="toggle_separate_line">объектив и дата на отдельной строке</string>
+
+    <string name="btn_export_original">оригинал 100%</string>
+    <string name="btn_export_social">для соцсетей</string>
+
+    <string name="gallery_title">галерея работ</string>
+    <string name="gallery_empty">пока нет сохранённых работ в галерее</string>
+    <string name="gallery_open">открыть галерею</string>
+    <string name="welcome_title">выберите фото с камеры</string>
+    <string name="welcome_desc">поддерживается пакетный выбор: один стиль рамки применится ко всем кадрам без потери качества</string>
+
+    <string name="toast_saved_social">фото сохранено для соцсетей!</string>
+    <string name="toast_saved_social_all">все фото сохранены для соцсетей!</string>
+    <string name="toast_saved_original">сохранено в 100% качестве!</string>
+    <string name="toast_saved_original_all">все фото сохранены в 100% качестве!</string>
+    <string name="toast_export_error">ошибка экспорта</string>
+
+    <string name="back_dialog_title">выйти в главное меню?</string>
+    <string name="back_dialog_desc">сохранить оформленное фото перед выходом?</string>
+    <string name="back_dialog_save_original">сохранить 100% оригинал</string>
+    <string name="back_dialog_save_social">сохранить для соцсетей</string>
+    <string name="back_dialog_discard">выйти без сохранения</string>
+    <string name="back_dialog_cancel">отмена</string>
+    <string name="close">закрыть</string>
+    <string name="share">поделиться</string>
+</resources>

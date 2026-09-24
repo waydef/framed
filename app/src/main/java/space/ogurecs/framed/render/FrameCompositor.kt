@@ -53,16 +53,35 @@ object FrameCompositor {
         val hasLogo = config.showLogo && brandRes != null
         val hasLine1 = hasLogo || brandName.isNotBlank() || modelText.isNotBlank()
 
-        val paramsList = mutableListOf<String>()
-        if (config.showParams) {
-            if (exif.formattedParams.isNotBlank()) paramsList.add(exif.formattedParams)
-            if (config.showLens && exif.lens.isNotBlank()) paramsList.add(exif.lens)
-            if (config.showDate && exif.dateTime.isNotBlank()) paramsList.add(exif.dateTime)
+        val exposureText = if (config.showParams) exif.formattedParams else ""
+        val extraList = mutableListOf<String>()
+        if (config.showLens && exif.lens.isNotBlank()) extraList.add(exif.lens)
+        if (config.showDate && exif.dateTime.isNotBlank()) extraList.add(exif.dateTime)
+        val extraText = extraList.joinToString("   ")
+
+        val hasExposure = exposureText.isNotBlank()
+        val hasExtra = extraText.isNotBlank()
+
+        val hasLine2: Boolean
+        val line2Text: String
+        val hasLine3: Boolean
+        val line3Text: String
+
+        if (config.separateExtraLine && hasExposure && hasExtra) {
+            hasLine2 = true
+            line2Text = exposureText
+            hasLine3 = true
+            line3Text = extraText
+        } else {
+            val combined = listOf(exposureText, extraText).filter { it.isNotBlank() }.joinToString("   |   ")
+            hasLine2 = combined.isNotBlank()
+            line2Text = combined
+            hasLine3 = false
+            line3Text = ""
         }
-        val paramsText = paramsList.joinToString("   ")
-        val hasLine2 = paramsText.isNotBlank()
 
         val footerHeight = when {
+            hasLine1 && hasLine2 && hasLine3 -> titleSize + lineSpacing * 1.8f + paramsSize * 1.8f
             hasLine1 && hasLine2 -> titleSize + lineSpacing + paramsSize
             hasLine1 -> titleSize
             hasLine2 -> paramsSize
@@ -142,11 +161,13 @@ object FrameCompositor {
                 lineSpacing = lineSpacing,
                 hasLine1 = hasLine1,
                 hasLine2 = hasLine2,
+                hasLine3 = hasLine3,
                 hasLogo = hasLogo,
                 brandRes = brandRes,
                 brandName = brandName,
                 modelText = modelText,
-                paramsText = paramsText,
+                line2Text = line2Text,
+                line3Text = line3Text,
                 config = config,
                 exif = exif
             )
@@ -252,11 +273,13 @@ object FrameCompositor {
         lineSpacing: Float,
         hasLine1: Boolean,
         hasLine2: Boolean,
+        hasLine3: Boolean,
         hasLogo: Boolean,
         brandRes: Int?,
         brandName: String,
         modelText: String,
-        paramsText: String,
+        line2Text: String,
+        line3Text: String,
         config: FrameConfig,
         exif: ExifData
     ) {
@@ -269,7 +292,7 @@ object FrameCompositor {
         val logoYOffset = refDim * (config.logoOffsetY / 1000f)
         val hOffset = refDim * (config.textHorizontalOffset / 1000f)
 
-        // Baseline positioning: if only one line is present, it collapses to centerY
+        // Baseline positioning for 2-line layout
         val topY = if (hasLine1 && hasLine2) centerY - lineSpacing * 0.55f else centerY
         val bottomY = if (hasLine1 && hasLine2) centerY + lineSpacing * 0.75f else centerY
 
@@ -289,78 +312,11 @@ object FrameCompositor {
 
         when (config.textAlignment) {
             space.ogurecs.framed.model.TextAlignment.SPLIT -> {
-                if (hasLine1 && hasLine2) {
-                    var currentX = photoRect.left + hOffset
-                    if (hasLogo && brandRes != null) {
-                        val drawable = ContextCompat.getDrawable(context, brandRes)
-                        if (drawable != null) {
-                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
-                            val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
-                            val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
-                            val logoW = (logoH * aspect).roundToInt()
-                            val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
-                            drawable.setBounds(currentX.roundToInt(), logoTop, (currentX + logoW).roundToInt(), logoTop + logoH)
-                            drawable.draw(canvas)
-                            currentX += logoW + logoGap
-                        }
-                    } else if (brandName.isNotBlank()) {
-                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
-                        textPaint.textSize = titleSize
-                        textPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(brandName, currentX, centerY, textPaint)
-                        currentX += textPaint.measureText(brandName) + logoGap
-                    }
+                // In SPLIT mode, left side has brand/logo + model, right side has params
+                // Vertical alignment must match baseline splitBaselineY
+                val splitBaselineY = if (hasLine3) centerY - lineSpacing * 0.40f else centerY
+                val splitCapCenterY = splitBaselineY - (capHeight / 2f)
 
-                    if (modelText.isNotBlank()) {
-                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
-                        textPaint.textSize = titleSize
-                        textPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(modelText, currentX, centerY, textPaint)
-                    }
-
-                    textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
-                    textPaint.textSize = paramsSize
-                    textPaint.textAlign = Paint.Align.RIGHT
-                    textPaint.color = Color.argb(235, 255, 255, 255)
-                    canvas.drawText(paramsText, photoRect.right + hOffset, centerY, textPaint)
-                } else if (!hasLine1 && hasLine2) {
-                    // Only params active: promote to single centered line
-                    textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
-                    textPaint.textSize = paramsSize
-                    textPaint.textAlign = Paint.Align.CENTER
-                    textPaint.color = Color.argb(235, 255, 255, 255)
-                    canvas.drawText(paramsText, cw / 2f + hOffset, centerY, textPaint)
-                } else if (hasLine1 && !hasLine2) {
-                    var currentX = photoRect.left + hOffset
-                    if (hasLogo && brandRes != null) {
-                        val drawable = ContextCompat.getDrawable(context, brandRes)
-                        if (drawable != null) {
-                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
-                            val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
-                            val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
-                            val logoW = (logoH * aspect).roundToInt()
-                            val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
-                            drawable.setBounds(currentX.roundToInt(), logoTop, (currentX + logoW).roundToInt(), logoTop + logoH)
-                            drawable.draw(canvas)
-                            currentX += logoW + logoGap
-                        }
-                    } else if (brandName.isNotBlank()) {
-                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
-                        textPaint.textSize = titleSize
-                        textPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(brandName, currentX, centerY, textPaint)
-                        currentX += textPaint.measureText(brandName) + logoGap
-                    }
-
-                    if (modelText.isNotBlank()) {
-                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
-                        textPaint.textSize = titleSize
-                        textPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(modelText, currentX, centerY, textPaint)
-                    }
-                }
-            }
-            space.ogurecs.framed.model.TextAlignment.LEFT -> {
                 var currentX = photoRect.left + hOffset
                 if (hasLine1) {
                     if (hasLogo && brandRes != null) {
@@ -370,7 +326,7 @@ object FrameCompositor {
                             val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
                             val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
                             val logoW = (logoH * aspect).roundToInt()
-                            val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
+                            val logoTop = (splitCapCenterY - logoH / 2f + logoYOffset).roundToInt()
                             drawable.setBounds(currentX.roundToInt(), logoTop, (currentX + logoW).roundToInt(), logoTop + logoH)
                             drawable.draw(canvas)
                             currentX += logoW + logoGap
@@ -379,7 +335,7 @@ object FrameCompositor {
                         textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
                         textPaint.textSize = titleSize
                         textPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(brandName, currentX, topY, textPaint)
+                        canvas.drawText(brandName, currentX, splitBaselineY, textPaint)
                         currentX += textPaint.measureText(brandName) + logoGap
                     }
 
@@ -387,20 +343,36 @@ object FrameCompositor {
                         textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
                         textPaint.textSize = titleSize
                         textPaint.textAlign = Paint.Align.LEFT
-                        canvas.drawText(modelText, currentX, topY, textPaint)
+                        canvas.drawText(modelText, currentX, splitBaselineY, textPaint)
                     }
                 }
 
                 if (hasLine2) {
-                    val targetY = if (hasLine1) bottomY else centerY
                     textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
                     textPaint.textSize = paramsSize
-                    textPaint.textAlign = Paint.Align.LEFT
+                    textPaint.textAlign = Paint.Align.RIGHT
                     textPaint.color = Color.argb(235, 255, 255, 255)
-                    canvas.drawText(paramsText, photoRect.left + hOffset, targetY, textPaint)
+                    canvas.drawText(line2Text, photoRect.right + hOffset, splitBaselineY, textPaint)
+                }
+
+                if (hasLine3) {
+                    val line3Y = splitBaselineY + lineSpacing * 0.85f
+                    textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
+                    textPaint.textSize = paramsSize * 0.95f
+                    textPaint.textAlign = Paint.Align.RIGHT
+                    textPaint.color = Color.argb(200, 255, 255, 255)
+                    canvas.drawText(line3Text, photoRect.right + hOffset, line3Y, textPaint)
                 }
             }
-            space.ogurecs.framed.model.TextAlignment.CENTER -> {
+            space.ogurecs.framed.model.TextAlignment.LEFT -> {
+                val line1Y = when {
+                    hasLine1 && hasLine2 && hasLine3 -> centerY - lineSpacing * 0.85f
+                    hasLine1 && hasLine2 -> topY
+                    else -> centerY
+                }
+                val line1CapCenterY = line1Y - (capHeight / 2f)
+
+                var currentX = photoRect.left + hOffset
                 if (hasLine1) {
                     if (hasLogo && brandRes != null) {
                         val drawable = ContextCompat.getDrawable(context, brandRes)
@@ -409,7 +381,66 @@ object FrameCompositor {
                             val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
                             val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
                             val logoW = (logoH * aspect).roundToInt()
-                            val logoTop = (capCenterY - logoH / 2f + logoYOffset).roundToInt()
+                            val logoTop = (line1CapCenterY - logoH / 2f + logoYOffset).roundToInt()
+                            drawable.setBounds(currentX.roundToInt(), logoTop, (currentX + logoW).roundToInt(), logoTop + logoH)
+                            drawable.draw(canvas)
+                            currentX += logoW + logoGap
+                        }
+                    } else if (brandName.isNotBlank()) {
+                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+                        textPaint.textSize = titleSize
+                        textPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(brandName, currentX, line1Y, textPaint)
+                        currentX += textPaint.measureText(brandName) + logoGap
+                    }
+
+                    if (modelText.isNotBlank()) {
+                        textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
+                        textPaint.textSize = titleSize
+                        textPaint.textAlign = Paint.Align.LEFT
+                        canvas.drawText(modelText, currentX, line1Y, textPaint)
+                    }
+                }
+
+                if (hasLine2) {
+                    val line2Y = when {
+                        hasLine1 && hasLine2 && hasLine3 -> centerY + lineSpacing * 0.15f
+                        hasLine1 -> bottomY
+                        else -> centerY
+                    }
+                    textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
+                    textPaint.textSize = paramsSize
+                    textPaint.textAlign = Paint.Align.LEFT
+                    textPaint.color = Color.argb(235, 255, 255, 255)
+                    canvas.drawText(line2Text, photoRect.left + hOffset, line2Y, textPaint)
+                }
+
+                if (hasLine3) {
+                    val line3Y = centerY + lineSpacing * 1.05f
+                    textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
+                    textPaint.textSize = paramsSize * 0.92f
+                    textPaint.textAlign = Paint.Align.LEFT
+                    textPaint.color = Color.argb(200, 255, 255, 255)
+                    canvas.drawText(line3Text, photoRect.left + hOffset, line3Y, textPaint)
+                }
+            }
+            space.ogurecs.framed.model.TextAlignment.CENTER -> {
+                val line1Y = when {
+                    hasLine1 && hasLine2 && hasLine3 -> centerY - lineSpacing * 0.85f
+                    hasLine1 && hasLine2 -> topY
+                    else -> centerY
+                }
+                val line1CapCenterY = line1Y - (capHeight / 2f)
+
+                if (hasLine1) {
+                    if (hasLogo && brandRes != null) {
+                        val drawable = ContextCompat.getDrawable(context, brandRes)
+                        if (drawable != null) {
+                            applyLogoColorFilter(drawable, config.logoColorMode, exif.brand)
+                            val logoH = (capHeight * 1.05f * config.logoScale).roundToInt()
+                            val aspect = drawable.intrinsicWidth.toFloat() / max(1, drawable.intrinsicHeight)
+                            val logoW = (logoH * aspect).roundToInt()
+                            val logoTop = (line1CapCenterY - logoH / 2f + logoYOffset).roundToInt()
 
                             if (modelText.isNotBlank()) {
                                 textPaint.typeface = getTypeface(context, config.fontOption, config.fontWeight)
@@ -422,7 +453,7 @@ object FrameCompositor {
                                 drawable.draw(canvas)
 
                                 textPaint.textAlign = Paint.Align.LEFT
-                                canvas.drawText(modelText, startX + logoW + logoGap, topY, textPaint)
+                                canvas.drawText(modelText, startX + logoW + logoGap, line1Y, textPaint)
                             } else {
                                 val startX = (cw - logoW) / 2f + hOffset
                                 drawable.setBounds(startX.roundToInt(), logoTop, (startX + logoW).roundToInt(), logoTop + logoH)
@@ -434,17 +465,30 @@ object FrameCompositor {
                         textPaint.textSize = titleSize
                         textPaint.textAlign = Paint.Align.CENTER
                         val combined = listOf(brandName, modelText).filter { it.isNotBlank() }.joinToString("  ")
-                        canvas.drawText(combined, cw / 2f + hOffset, topY, textPaint)
+                        canvas.drawText(combined, cw / 2f + hOffset, line1Y, textPaint)
                     }
                 }
 
                 if (hasLine2) {
-                    val targetY = if (hasLine1) bottomY else centerY
+                    val line2Y = when {
+                        hasLine1 && hasLine2 && hasLine3 -> centerY + lineSpacing * 0.15f
+                        hasLine1 -> bottomY
+                        else -> centerY
+                    }
                     textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
                     textPaint.textSize = paramsSize
                     textPaint.textAlign = Paint.Align.CENTER
                     textPaint.color = Color.argb(235, 255, 255, 255)
-                    canvas.drawText(paramsText, cw / 2f + hOffset, targetY, textPaint)
+                    canvas.drawText(line2Text, cw / 2f + hOffset, line2Y, textPaint)
+                }
+
+                if (hasLine3) {
+                    val line3Y = centerY + lineSpacing * 1.05f
+                    textPaint.typeface = getTypeface(context, config.fontOption, paramsWeight)
+                    textPaint.textSize = paramsSize * 0.92f
+                    textPaint.textAlign = Paint.Align.CENTER
+                    textPaint.color = Color.argb(200, 255, 255, 255)
+                    canvas.drawText(line3Text, cw / 2f + hOffset, line3Y, textPaint)
                 }
             }
         }

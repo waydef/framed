@@ -105,18 +105,19 @@ enum class ExportQuality(val label: String, val badge: String) {
 
 data class FrameConfig(
     val ratio: CanvasRatio = CanvasRatio.RATIO_3_4,
-    val cornerRadius: Float = 28f,
+    val cornerRadius: Float = 60f,
     val shadowRadius: Float = 36f,
     val shadowAlpha: Float = 0.38f,
     val shadowOffsetY: Float = 0f,
-    val blurRadius: Float = 42f,
+    val blurRadius: Float = 40f,
     val blurDimming: Float = 0.12f,
-    val photoScale: Float = 0.89f,
+    val photoScale: Float = 0.95f,
     val showLogo: Boolean = true,
     val showModel: Boolean = true,
     val showParams: Boolean = true,
     val showLens: Boolean = false,
     val showDate: Boolean = false,
+    val separateExtraLine: Boolean = true,
     val logoColorMode: LogoColorMode = LogoColorMode.WHITE,
     val fontOption: FontOption = FontOption.INTER,
     val fontWeight: CustomFontWeight = CustomFontWeight.MEDIUM,
@@ -130,7 +131,7 @@ data class FrameConfig(
     val logoOffsetY: Float = 0f,
     val shadowSpread: Float = 8f,
     val textHorizontalOffset: Float = 0f,
-    val textMasterScale: Float = 1.0f,
+    val textMasterScale: Float = 1.5f,
     val logoScale: Float = 1.0f
 )
 

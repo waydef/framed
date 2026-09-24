@@ -9,10 +9,13 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,25 +49,26 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LinearScale
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -80,13 +84,16 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -98,6 +105,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -109,6 +117,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import space.ogurecs.framed.R
 import space.ogurecs.framed.model.CameraBrand
 import space.ogurecs.framed.model.CanvasRatio
 import space.ogurecs.framed.model.CustomFontWeight
@@ -119,6 +128,8 @@ import space.ogurecs.framed.model.FrameConfig
 import space.ogurecs.framed.model.LogoColorMode
 import space.ogurecs.framed.parser.ExifParser
 import space.ogurecs.framed.render.FrameCompositor
+import space.ogurecs.framed.util.ConfigStorage
+import space.ogurecs.framed.util.HapticFeedback
 import kotlin.math.max
 
 data class SavedFramedItem(
@@ -137,17 +148,41 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
     var currentUriIndex by remember { mutableIntStateOf(0) }
 
     var exifData by remember { mutableStateOf(ExifData()) }
-    var config by remember { mutableStateOf(FrameConfig()) }
+    var config by remember { mutableStateOf(ConfigStorage.loadConfig(context)) }
+
+    // Auto-persist config changes to SharedPreferences
+    LaunchedEffect(config) {
+        ConfigStorage.saveConfig(context, config)
+    }
 
     var fullBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isProcessing by remember { mutableStateOf(false) }
-    var isExporting by remember { mutableStateOf(false) }
+    var activeExportQuality by remember { mutableStateOf<ExportQuality?>(null) }
     var batchProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var showGalleryModal by remember { mutableStateOf(false) }
     var fullScreenPreviewUri by remember { mutableStateOf<Uri?>(null) }
+    var isSettingsVisible by remember { mutableStateOf(true) }
+
+    var showExitDialog by remember { mutableStateOf(false) }
+    var lastBackPressTime by remember { mutableLongStateOf(0L) }
+
+    // Back handling: double press to exit without saving, single press shows confirmation dialog
+    BackHandler(enabled = fullBitmap != null) {
+        HapticFeedback.click(context)
+        val now = System.currentTimeMillis()
+        if (now - lastBackPressTime < 1500L) {
+            fullBitmap = null
+            selectedUris = emptyList()
+            previewBitmap = null
+            showExitDialog = false
+        } else {
+            lastBackPressTime = now
+            showExitDialog = true
+        }
+    }
 
     fun loadUri(uri: Uri) {
         scope.launch {
@@ -180,6 +215,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
         if (uris.isNotEmpty()) {
+            HapticFeedback.click(context)
             selectedUris = uris
             currentUriIndex = 0
             loadUri(uris[0])
@@ -207,9 +243,55 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
         }
     }
 
+    // Material You Dynamic Colors
+    val accentColor = MaterialTheme.colorScheme.primary
     val darkBg = Color(0xFF0D0F12)
     val cardSurface = Color(0xFF161920)
-    val accentColor = Color(0xFF818CF8)
+
+    val runExport: (ExportQuality) -> Unit = { quality ->
+        val src = fullBitmap
+        if (src != null) {
+            scope.launch {
+                activeExportQuality = quality
+                try {
+                    withContext(Dispatchers.Default) {
+                        if (selectedUris.size > 1) {
+                            selectedUris.forEachIndexed { idx, u ->
+                                batchProgress = Pair(idx + 1, selectedUris.size)
+                                val parsed = ExifParser.parse(context, u)
+                                context.contentResolver.openInputStream(u)?.use { st ->
+                                    val raw = BitmapFactory.decodeStream(st)
+                                    if (raw != null) {
+                                        val rendered = FrameCompositor.render(context, raw, parsed, config)
+                                        FrameCompositor.saveToGallery(context, rendered, parsed.model.ifBlank { "photo" }, quality)
+                                        rendered.recycle()
+                                        raw.recycle()
+                                    }
+                                }
+                            }
+                        } else {
+                            batchProgress = Pair(1, 1)
+                            val renderedHighRes = FrameCompositor.render(context, src, exifData, config)
+                            FrameCompositor.saveToGallery(context, renderedHighRes, exifData.model.ifBlank { "photo" }, quality)
+                            renderedHighRes.recycle()
+                        }
+                    }
+                    HapticFeedback.success(context)
+                    val msg = if (quality == ExportQuality.TIKTOK_OPTIMIZED) {
+                        if (selectedUris.size > 1) context.getString(R.string.toast_saved_social_all) else context.getString(R.string.toast_saved_social)
+                    } else {
+                        if (selectedUris.size > 1) context.getString(R.string.toast_saved_original_all) else context.getString(R.string.toast_saved_original)
+                    }
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "${context.getString(R.string.toast_export_error)}: ${e.message}", Toast.LENGTH_SHORT).show()
+                } finally {
+                    activeExportQuality = null
+                    batchProgress = null
+                }
+            }
+        }
+    }
 
     Scaffold(
         containerColor = darkBg,
@@ -219,7 +301,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(30.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(accentColor),
                             contentAlignment = Alignment.Center
@@ -228,35 +310,51 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                 imageVector = Icons.Default.CameraAlt,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "framed",
+                            text = stringResource(R.string.app_name),
                             fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
+                            fontSize = 19.sp,
                             color = Color.White,
                             fontFamily = FontFamily.SansSerif
                         )
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showGalleryModal = true }) {
+                    if (fullBitmap != null) {
+                        IconButton(onClick = {
+                            HapticFeedback.click(context)
+                            isSettingsVisible = !isSettingsVisible
+                        }) {
+                            Icon(
+                                imageVector = if (isSettingsVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = "toggle controls",
+                                tint = if (isSettingsVisible) accentColor else Color(0xFF94A3B8)
+                            )
+                        }
+                    }
+                    IconButton(onClick = {
+                        HapticFeedback.click(context)
+                        showGalleryModal = true
+                    }) {
                         Icon(
                             imageVector = Icons.Default.PhotoLibrary,
-                            contentDescription = "галерея работ",
+                            contentDescription = stringResource(R.string.gallery_title),
                             tint = Color(0xFFCBD5E1)
                         )
                     }
                     IconButton(onClick = {
+                        HapticFeedback.click(context)
                         multiplePhotosPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
                     }) {
                         Icon(
                             imageVector = Icons.Default.AddPhotoAlternate,
-                            contentDescription = "выбрать фото",
+                            contentDescription = stringResource(R.string.welcome_title),
                             tint = Color(0xFFCBD5E1)
                         )
                     }
@@ -270,28 +368,31 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Multi-photo strip
+            // Multi-photo strip (compact)
             if (selectedUris.size > 1) {
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(Color(0xFF11141A))
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     itemsIndexed(selectedUris) { idx, u ->
                         val isSelected = idx == currentUriIndex
                         Box(
                             modifier = Modifier
-                                .size(46.dp)
-                                .clip(RoundedCornerShape(8.dp))
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(6.dp))
                                 .border(
                                     width = if (isSelected) 2.dp else 1.dp,
                                     color = if (isSelected) accentColor else Color(0xFF2D3342),
-                                    shape = RoundedCornerShape(8.dp)
+                                    shape = RoundedCornerShape(6.dp)
                                 )
-                                .clickable { currentUriIndex = idx }
+                                .clickable {
+                                    HapticFeedback.tick(context)
+                                    currentUriIndex = idx
+                                }
                         ) {
                             AsyncImage(
                                 model = u,
@@ -304,12 +405,18 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                 }
             }
 
-            // Viewport area
+            // Viewport area (maximized edge-to-edge space)
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(2.dp)
+                    .clickable {
+                        if (fullBitmap != null) {
+                            HapticFeedback.tick(context)
+                            isSettingsVisible = !isSettingsVisible
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 if (fullBitmap == null) {
@@ -342,14 +449,14 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                             }
                             Spacer(modifier = Modifier.height(18.dp))
                             Text(
-                                text = "выберите фото с камеры",
+                                text = stringResource(R.string.welcome_title),
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "поддерживается пакетный выбор: один стиль рамки применится ко всем кадрам без потери качества",
+                                text = stringResource(R.string.welcome_desc),
                                 fontSize = 13.sp,
                                 color = Color(0xFF94A3B8),
                                 textAlign = TextAlign.Center
@@ -357,6 +464,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                             Spacer(modifier = Modifier.height(20.dp))
                             Button(
                                 onClick = {
+                                    HapticFeedback.click(context)
                                     multiplePhotosPicker.launch(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                     )
@@ -366,7 +474,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                             ) {
                                 Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("открыть галерею", fontWeight = FontWeight.Medium)
+                                Text(stringResource(R.string.gallery_open), fontWeight = FontWeight.Medium)
                             }
                         }
                     }
@@ -386,177 +494,150 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                 }
             }
 
-            // Bottom Settings Panel
+            // Bottom Settings Panel with Animated Visibility for fullscreen inspection
             if (fullBitmap != null) {
-                Surface(
-                    color = cardSurface,
-                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                    modifier = Modifier.fillMaxWidth()
+                AnimatedVisibility(
+                    visible = isSettingsVisible,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
+                    Surface(
+                        color = cardSurface,
+                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        TabRow(
-                            selectedTabIndex = selectedTab,
-                            containerColor = cardSurface,
-                            contentColor = accentColor,
-                            indicator = { tabPositions ->
-                                TabRowDefaults.SecondaryIndicator(
-                                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                                    color = accentColor
-                                )
-                            }
-                        ) {
-                            Tab(
-                                selected = selectedTab == 0,
-                                onClick = { selectedTab = 0 },
-                                text = { Text("формат", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
-                                icon = { Icon(Icons.Default.AspectRatio, contentDescription = null, modifier = Modifier.size(14.dp)) }
-                            )
-                            Tab(
-                                selected = selectedTab == 1,
-                                onClick = { selectedTab = 1 },
-                                text = { Text("стиль", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
-                                icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) }
-                            )
-                            Tab(
-                                selected = selectedTab == 2,
-                                onClick = { selectedTab = 2 },
-                                text = { Text("отступы", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
-                                icon = { Icon(Icons.Default.LinearScale, contentDescription = null, modifier = Modifier.size(14.dp)) }
-                            )
-                            Tab(
-                                selected = selectedTab == 3,
-                                onClick = { selectedTab = 3 },
-                                text = { Text("инфо", fontSize = 12.sp, fontWeight = FontWeight.Medium) },
-                                icon = { Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp)) }
-                            )
-                        }
-
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(190.dp)
-                                .verticalScroll(rememberScrollState())
-                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                                .navigationBarsPadding()
                         ) {
-                            when (selectedTab) {
-                                0 -> FormatSettings(config = config, onConfigChange = { config = it })
-                                1 -> StyleSettings(config = config, onConfigChange = { config = it })
-                                2 -> SpacingSettings(config = config, onConfigChange = { config = it })
-                                3 -> MetaSettings(
-                                    exif = exifData,
-                                    config = config,
-                                    onExifChange = { exifData = it },
-                                    onConfigChange = { config = it }
+                            TabRow(
+                                selectedTabIndex = selectedTab,
+                                containerColor = cardSurface,
+                                contentColor = accentColor,
+                                indicator = { tabPositions ->
+                                    TabRowDefaults.SecondaryIndicator(
+                                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                                        color = accentColor
+                                    )
+                                }
+                            ) {
+                                Tab(
+                                    selected = selectedTab == 0,
+                                    onClick = {
+                                        HapticFeedback.tick(context)
+                                        selectedTab = 0
+                                    },
+                                    text = { Text(stringResource(R.string.tab_format), fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                    icon = { Icon(Icons.Default.AspectRatio, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                                )
+                                Tab(
+                                    selected = selectedTab == 1,
+                                    onClick = {
+                                        HapticFeedback.tick(context)
+                                        selectedTab = 1
+                                    },
+                                    text = { Text(stringResource(R.string.tab_style), fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                    icon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                                )
+                                Tab(
+                                    selected = selectedTab == 2,
+                                    onClick = {
+                                        HapticFeedback.tick(context)
+                                        selectedTab = 2
+                                    },
+                                    text = { Text(stringResource(R.string.tab_spacing), fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                    icon = { Icon(Icons.Default.LinearScale, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                                )
+                                Tab(
+                                    selected = selectedTab == 3,
+                                    onClick = {
+                                        HapticFeedback.tick(context)
+                                        selectedTab = 3
+                                    },
+                                    text = { Text(stringResource(R.string.tab_info), fontSize = 12.sp, fontWeight = FontWeight.Medium) },
+                                    icon = { Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(14.dp)) }
                                 )
                             }
-                            Spacer(modifier = Modifier.height(16.dp))
-                        }
 
-                        // Persistent Action Bar (Pinned cleanly below settings without any overlap)
-                        val runExport: (ExportQuality) -> Unit = { quality ->
-                            val src = fullBitmap
-                            if (src != null) {
-                                scope.launch {
-                                    isExporting = true
-                                    try {
-                                        withContext(Dispatchers.Default) {
-                                            if (selectedUris.size > 1) {
-                                                selectedUris.forEachIndexed { idx, u ->
-                                                    batchProgress = Pair(idx + 1, selectedUris.size)
-                                                    val parsed = ExifParser.parse(context, u)
-                                                    context.contentResolver.openInputStream(u)?.use { st ->
-                                                        val raw = BitmapFactory.decodeStream(st)
-                                                        if (raw != null) {
-                                                            val rendered = FrameCompositor.render(context, raw, parsed, config)
-                                                            FrameCompositor.saveToGallery(context, rendered, parsed.model.ifBlank { "photo" }, quality)
-                                                            rendered.recycle()
-                                                            raw.recycle()
-                                                        }
-                                                    }
-                                                }
-                                            } else {
-                                                batchProgress = Pair(1, 1)
-                                                val renderedHighRes = FrameCompositor.render(context, src, exifData, config)
-                                                FrameCompositor.saveToGallery(context, renderedHighRes, exifData.model.ifBlank { "photo" }, quality)
-                                                renderedHighRes.recycle()
-                                            }
-                                        }
-                                        val msg = if (quality == ExportQuality.TIKTOK_OPTIMIZED) {
-                                            if (selectedUris.size > 1) "все фото сохранены для соцсетей!" else "фото сохранено для соцсетей!"
-                                        } else {
-                                            if (selectedUris.size > 1) "все фото сохранены в 100% качестве!" else "сохранено в 100% качестве!"
-                                        }
-                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "ошибка экспорта: ${e.message}", Toast.LENGTH_SHORT).show()
-                                    } finally {
-                                        isExporting = false
-                                        batchProgress = null
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(175.dp)
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                            ) {
+                                when (selectedTab) {
+                                    0 -> FormatSettings(config = config, accent = accentColor, onConfigChange = { config = it })
+                                    1 -> StyleSettings(config = config, accent = accentColor, onConfigChange = { config = it })
+                                    2 -> SpacingSettings(config = config, accent = accentColor, onConfigChange = { config = it })
+                                    3 -> MetaSettings(
+                                        exif = exifData,
+                                        config = config,
+                                        accent = accentColor,
+                                        onExifChange = { exifData = it },
+                                        onConfigChange = { config = it }
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+
+                            // Persistent Action Bar (Pinned cleanly below settings without any overlap)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF12141A))
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // 1. Export in Full Quality (100% Native)
+                                Button(
+                                    onClick = {
+                                        HapticFeedback.click(context)
+                                        runExport(ExportQuality.ORIGINAL_100)
+                                    },
+                                    enabled = activeExportQuality == null && fullBitmap != null,
+                                    modifier = Modifier.weight(1f).height(46.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFF272C38),
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    if (activeExportQuality == ExportQuality.ORIGINAL_100) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(batchProgress?.let { "${it.first}/${it.second}" } ?: "...", fontSize = 11.sp)
+                                    } else {
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFCBD5E1))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(stringResource(R.string.btn_export_original), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                                     }
                                 }
-                            }
-                        }
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFF12141A))
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // 1. Export in Full Quality (100% Native)
-                            Button(
-                                onClick = { runExport(ExportQuality.ORIGINAL_100) },
-                                enabled = !isExporting && fullBitmap != null,
-                                modifier = Modifier.weight(1f).height(48.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF272C38),
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                if (isExporting) {
-                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(batchProgress?.let { "${it.first}/${it.second}" } ?: "...", fontSize = 11.sp)
-                                } else {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFFCBD5E1))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Column(horizontalAlignment = Alignment.Start) {
-                                        Text("оригинал 100%", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                        val countLabel = if (selectedUris.size > 1) "все фото • без потерь" else "без потерь"
-                                        Text(countLabel, fontSize = 9.sp, color = Color(0xFF94A3B8))
-                                    }
-                                }
-                            }
-
-                            // 2. Export for Social Media / TikTok (1080p, smart unsharp sharpening, optimal 96% JPEG)
-                            Button(
-                                onClick = { runExport(ExportQuality.TIKTOK_OPTIMIZED) },
-                                enabled = !isExporting && fullBitmap != null,
-                                modifier = Modifier.weight(1f).height(48.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFF4F46E5),
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                if (isExporting) {
-                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(batchProgress?.let { "${it.first}/${it.second}" } ?: "...", fontSize = 11.sp)
-                                } else {
-                                    Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Column(horizontalAlignment = Alignment.Start) {
-                                        Text("для соцсетей", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                                        val countLabel = if (selectedUris.size > 1) "все фото • 1080p чётко" else "1080p • чётко"
-                                        Text(countLabel, fontSize = 9.sp, color = Color(0xFFC7D2FE))
+                                // 2. Export for Social Media / TikTok (1080p, smart unsharp sharpening, optimal 96% JPEG)
+                                Button(
+                                    onClick = {
+                                        HapticFeedback.click(context)
+                                        runExport(ExportQuality.TIKTOK_OPTIMIZED)
+                                    },
+                                    enabled = activeExportQuality == null && fullBitmap != null,
+                                    modifier = Modifier.weight(1f).height(46.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = accentColor,
+                                        contentColor = Color.White
+                                    )
+                                ) {
+                                    if (activeExportQuality == ExportQuality.TIKTOK_OPTIMIZED) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(batchProgress?.let { "${it.first}/${it.second}" } ?: "...", fontSize = 11.sp)
+                                    } else {
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(stringResource(R.string.btn_export_social), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                                     }
                                 }
                             }
@@ -567,10 +648,91 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
         }
     }
 
+    // Exit Confirmation Dialog
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            containerColor = Color(0xFF1E222D),
+            title = {
+                Text(
+                    text = stringResource(R.string.back_dialog_title),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.back_dialog_desc),
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            HapticFeedback.click(context)
+                            showExitDialog = false
+                            runExport(ExportQuality.ORIGINAL_100)
+                            fullBitmap = null
+                            selectedUris = emptyList()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                    ) {
+                        Text(stringResource(R.string.back_dialog_save_original))
+                    }
+                    Button(
+                        onClick = {
+                            HapticFeedback.click(context)
+                            showExitDialog = false
+                            runExport(ExportQuality.TIKTOK_OPTIMIZED)
+                            fullBitmap = null
+                            selectedUris = emptyList()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
+                    ) {
+                        Text(stringResource(R.string.back_dialog_save_social))
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            HapticFeedback.click(context)
+                            showExitDialog = false
+                            fullBitmap = null
+                            selectedUris = emptyList()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(stringResource(R.string.back_dialog_discard), color = Color(0xFFEF4444))
+                    }
+                    TextButton(
+                        onClick = {
+                            HapticFeedback.click(context)
+                            showExitDialog = false
+                        },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Text(stringResource(R.string.back_dialog_cancel), color = Color(0xFF94A3B8))
+                    }
+                }
+            },
+            dismissButton = {}
+        )
+    }
+
     // Saved Works Gallery Sheet
     if (showGalleryModal) {
         SavedGalleryModal(
             context = context,
+            accent = accentColor,
             onDismiss = { showGalleryModal = false },
             onOpenItem = { fullScreenPreviewUri = it }
         )
@@ -599,7 +761,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                         .align(Alignment.TopEnd)
                         .padding(16.dp)
                 ) {
-                    Icon(Icons.Default.Close, contentDescription = "закрыть", tint = Color.White)
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close), tint = Color.White)
                 }
             }
         }
@@ -609,15 +771,17 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
 @Composable
 private fun FormatSettings(
     config: FrameConfig,
+    accent: Color,
     onConfigChange: (FrameConfig) -> Unit
 ) {
+    val context = LocalContext.current
     Text(
-        text = "соотношение сторон холста",
+        text = stringResource(R.string.ratio_header),
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
     )
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(6.dp))
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -628,10 +792,13 @@ private fun FormatSettings(
             val isSelected = config.ratio == ratio
             FilterChip(
                 selected = isSelected,
-                onClick = { onConfigChange(config.copy(ratio = ratio)) },
+                onClick = {
+                    HapticFeedback.tick(context)
+                    onConfigChange(config.copy(ratio = ratio))
+                },
                 label = { Text(ratio.label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Color(0xFF4F46E5),
+                    selectedContainerColor = accent,
                     selectedLabelColor = Color.White,
                     containerColor = Color(0xFF222631),
                     labelColor = Color(0xFFCBD5E1)
@@ -641,11 +808,11 @@ private fun FormatSettings(
         }
     }
 
-    Spacer(modifier = Modifier.height(14.dp))
+    Spacer(modifier = Modifier.height(12.dp))
 
     // Text Alignment
     Text(
-        text = "выравнивание текста",
+        text = stringResource(R.string.align_header),
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
@@ -659,12 +826,20 @@ private fun FormatSettings(
     ) {
         space.ogurecs.framed.model.TextAlignment.values().forEach { align ->
             val isSelected = config.textAlignment == align
+            val label = when (align) {
+                space.ogurecs.framed.model.TextAlignment.CENTER -> stringResource(R.string.align_center)
+                space.ogurecs.framed.model.TextAlignment.LEFT -> stringResource(R.string.align_left)
+                space.ogurecs.framed.model.TextAlignment.SPLIT -> stringResource(R.string.align_split)
+            }
             FilterChip(
                 selected = isSelected,
-                onClick = { onConfigChange(config.copy(textAlignment = align)) },
-                label = { Text(align.label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
+                onClick = {
+                    HapticFeedback.tick(context)
+                    onConfigChange(config.copy(textAlignment = align))
+                },
+                label = { Text(label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Color(0xFF4F46E5),
+                    selectedContainerColor = accent,
                     selectedLabelColor = Color.White,
                     containerColor = Color(0xFF222631),
                     labelColor = Color(0xFFCBD5E1)
@@ -674,14 +849,13 @@ private fun FormatSettings(
         }
     }
 
-    Spacer(modifier = Modifier.height(14.dp))
+    Spacer(modifier = Modifier.height(12.dp))
 
-    val accent = Color(0xFF818CF8)
     SettingSlider(
-        label = "масштаб кадра в рамке",
+        label = stringResource(R.string.scale_photo),
         valueText = "${(config.photoScale * 100).toInt()}%",
         value = config.photoScale,
-        range = 0.70f..0.95f,
+        range = 0.70f..0.98f,
         accent = accent,
         onValueChange = { onConfigChange(config.copy(photoScale = it)) }
     )
@@ -690,13 +864,14 @@ private fun FormatSettings(
 @Composable
 private fun StyleSettings(
     config: FrameConfig,
+    accent: Color,
     onConfigChange: (FrameConfig) -> Unit
 ) {
-    val accent = Color(0xFF818CF8)
+    val context = LocalContext.current
 
     // Typography: Font Family Selection
     Text(
-        text = "шрифт надписи",
+        text = stringResource(R.string.font_header),
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
@@ -712,10 +887,13 @@ private fun StyleSettings(
             val isSelected = config.fontOption == font
             FilterChip(
                 selected = isSelected,
-                onClick = { onConfigChange(config.copy(fontOption = font)) },
+                onClick = {
+                    HapticFeedback.tick(context)
+                    onConfigChange(config.copy(fontOption = font))
+                },
                 label = { Text(font.label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Color(0xFF4F46E5),
+                    selectedContainerColor = accent,
                     selectedLabelColor = Color.White,
                     containerColor = Color(0xFF222631),
                     labelColor = Color(0xFFCBD5E1)
@@ -729,7 +907,7 @@ private fun StyleSettings(
 
     // Typography: Font Weight Selection
     Text(
-        text = "начертание (жирность)",
+        text = stringResource(R.string.weight_header),
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
@@ -745,10 +923,13 @@ private fun StyleSettings(
             val isSelected = config.fontWeight == weight
             FilterChip(
                 selected = isSelected,
-                onClick = { onConfigChange(config.copy(fontWeight = weight)) },
+                onClick = {
+                    HapticFeedback.tick(context)
+                    onConfigChange(config.copy(fontWeight = weight))
+                },
                 label = { Text(weight.label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Color(0xFF4F46E5),
+                    selectedContainerColor = accent,
                     selectedLabelColor = Color.White,
                     containerColor = Color(0xFF222631),
                     labelColor = Color(0xFFCBD5E1)
@@ -762,7 +943,7 @@ private fun StyleSettings(
 
     // Logo Color Mode
     Text(
-        text = "цвет логотипа",
+        text = stringResource(R.string.logo_color_header),
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
@@ -776,12 +957,21 @@ private fun StyleSettings(
     ) {
         LogoColorMode.values().forEach { mode ->
             val isSelected = config.logoColorMode == mode
+            val label = when (mode) {
+                LogoColorMode.WHITE -> stringResource(R.string.color_white)
+                LogoColorMode.BLACK -> stringResource(R.string.color_black)
+                LogoColorMode.BRAND -> stringResource(R.string.color_brand)
+                LogoColorMode.MATCH_TEXT -> stringResource(R.string.color_text)
+            }
             FilterChip(
                 selected = isSelected,
-                onClick = { onConfigChange(config.copy(logoColorMode = mode)) },
-                label = { Text(mode.label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
+                onClick = {
+                    HapticFeedback.tick(context)
+                    onConfigChange(config.copy(logoColorMode = mode))
+                },
+                label = { Text(label, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Color(0xFF4F46E5),
+                    selectedContainerColor = accent,
                     selectedLabelColor = Color.White,
                     containerColor = Color(0xFF222631),
                     labelColor = Color(0xFFCBD5E1)
@@ -795,16 +985,16 @@ private fun StyleSettings(
 
     // Sliders
     SettingSlider(
-        label = "скругление углов",
+        label = stringResource(R.string.corner_radius),
         valueText = "${config.cornerRadius.toInt()} dp",
         value = config.cornerRadius,
-        range = 0f..60f,
+        range = 0f..120f,
         accent = accent,
         onValueChange = { onConfigChange(config.copy(cornerRadius = it)) }
     )
 
     SettingSlider(
-        label = "размытие фона",
+        label = stringResource(R.string.blur_radius),
         valueText = "${config.blurRadius.toInt()}%",
         value = config.blurRadius,
         range = 10f..60f,
@@ -813,7 +1003,7 @@ private fun StyleSettings(
     )
 
     SettingSlider(
-        label = "непрозрачность тени",
+        label = stringResource(R.string.shadow_opacity),
         valueText = "${(config.shadowAlpha * 100).toInt()}%",
         value = config.shadowAlpha,
         range = 0f..0.8f,
@@ -822,7 +1012,7 @@ private fun StyleSettings(
     )
 
     SettingSlider(
-        label = "мягкость размытия тени",
+        label = stringResource(R.string.shadow_blur),
         valueText = "${config.shadowRadius.toInt()} px",
         value = config.shadowRadius,
         range = 0f..90f,
@@ -831,7 +1021,7 @@ private fun StyleSettings(
     )
 
     SettingSlider(
-        label = "размер / рассеивание тени",
+        label = stringResource(R.string.shadow_spread),
         valueText = "${config.shadowSpread.toInt()} px",
         value = config.shadowSpread,
         range = 0f..60f,
@@ -840,8 +1030,8 @@ private fun StyleSettings(
     )
 
     SettingSlider(
-        label = "смещение тени вниз",
-        valueText = if (config.shadowOffsetY == 0f) "0% (равномерно)" else "${config.shadowOffsetY.toInt()}%",
+        label = stringResource(R.string.shadow_offset),
+        valueText = if (config.shadowOffsetY == 0f) "0%" else "${config.shadowOffsetY.toInt()}%",
         value = config.shadowOffsetY,
         range = 0f..80f,
         accent = accent,
@@ -852,12 +1042,11 @@ private fun StyleSettings(
 @Composable
 private fun SpacingSettings(
     config: FrameConfig,
+    accent: Color,
     onConfigChange: (FrameConfig) -> Unit
 ) {
-    val accent = Color(0xFF818CF8)
-
     SettingSlider(
-        label = "общий масштаб надписи",
+        label = stringResource(R.string.text_master_scale),
         valueText = String.format(java.util.Locale.US, "%.1fx", config.textMasterScale),
         value = config.textMasterScale,
         range = 0.5f..2.5f,
@@ -866,7 +1055,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "размер логотипа",
+        label = stringResource(R.string.logo_scale),
         valueText = String.format(java.util.Locale.US, "%.1fx", config.logoScale),
         value = config.logoScale,
         range = 0.5f..2.5f,
@@ -875,7 +1064,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "размер названия камеры",
+        label = stringResource(R.string.font_size_line1),
         valueText = "${config.fontSizeLine1.toInt()} pt",
         value = config.fontSizeLine1,
         range = 16f..64f,
@@ -884,7 +1073,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "размер параметров съемки",
+        label = stringResource(R.string.font_size_line2),
         valueText = "${config.fontSizeLine2.toInt()} pt",
         value = config.fontSizeLine2,
         range = 12f..48f,
@@ -893,8 +1082,8 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "смещение логотипа по вертикали",
-        valueText = if (config.logoOffsetY == 0f) "0 (оптический центр)" else if (config.logoOffsetY > 0) "+${config.logoOffsetY.toInt()} dp" else "${config.logoOffsetY.toInt()} dp",
+        label = stringResource(R.string.logo_offset_y),
+        valueText = if (config.logoOffsetY == 0f) "0" else "${config.logoOffsetY.toInt()} dp",
         value = config.logoOffsetY,
         range = -25f..25f,
         accent = accent,
@@ -902,7 +1091,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "отступ логотипа от текста",
+        label = stringResource(R.string.logo_gap),
         valueText = "${config.logoGap.toInt()} dp",
         value = config.logoGap,
         range = 4f..60f,
@@ -911,7 +1100,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "расстояние между строками",
+        label = stringResource(R.string.line_spacing),
         valueText = "${config.lineSpacing.toInt()} dp",
         value = config.lineSpacing,
         range = 10f..60f,
@@ -920,7 +1109,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "положение текста по вертикали",
+        label = stringResource(R.string.text_vertical_offset),
         valueText = if (config.footerVerticalOffset > 0) "+${config.footerVerticalOffset.toInt()}%" else "${config.footerVerticalOffset.toInt()}%",
         value = config.footerVerticalOffset,
         range = -35f..35f,
@@ -929,7 +1118,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "смещение текста по горизонтали",
+        label = stringResource(R.string.text_horizontal_offset),
         valueText = if (config.textHorizontalOffset == 0f) "0" else "${config.textHorizontalOffset.toInt()} dp",
         value = config.textHorizontalOffset,
         range = -40f..40f,
@@ -938,7 +1127,7 @@ private fun SpacingSettings(
     )
 
     SettingSlider(
-        label = "межбуквенный интервал",
+        label = stringResource(R.string.letter_spacing),
         valueText = String.format("%.2f", config.letterSpacing),
         value = config.letterSpacing,
         range = 0f..0.15f,
@@ -946,7 +1135,6 @@ private fun SpacingSettings(
         onValueChange = { onConfigChange(config.copy(letterSpacing = it)) }
     )
 }
-
 
 @Composable
 private fun SettingSlider(
@@ -957,6 +1145,9 @@ private fun SettingSlider(
     accent: Color,
     onValueChange: (Float) -> Unit
 ) {
+    val context = LocalContext.current
+    var lastTickValue by remember { mutableFloatStateOf(value) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -979,7 +1170,13 @@ private fun SettingSlider(
     Spacer(modifier = Modifier.height(6.dp))
     Slider(
         value = value,
-        onValueChange = onValueChange,
+        onValueChange = {
+            if (kotlin.math.abs(it - lastTickValue) > (range.endInclusive - range.start) * 0.06f) {
+                HapticFeedback.tick(context)
+                lastTickValue = it
+            }
+            onValueChange(it)
+        },
         valueRange = range,
         colors = SliderDefaults.colors(
             thumbColor = accent,
@@ -994,11 +1191,13 @@ private fun SettingSlider(
 private fun MetaSettings(
     exif: ExifData,
     config: FrameConfig,
+    accent: Color,
     onExifChange: (ExifData) -> Unit,
     onConfigChange: (FrameConfig) -> Unit
 ) {
+    val context = LocalContext.current
     Text(
-        text = "бренд камеры",
+        text = stringResource(R.string.camera_brand_header),
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         color = Color(0xFF94A3B8)
@@ -1014,10 +1213,13 @@ private fun MetaSettings(
             val isSelected = exif.brand == brand
             FilterChip(
                 selected = isSelected,
-                onClick = { onExifChange(exif.copy(brand = brand)) },
+                onClick = {
+                    HapticFeedback.tick(context)
+                    onExifChange(exif.copy(brand = brand))
+                },
                 label = { Text(brand.displayName, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal) },
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = Color(0xFF4F46E5),
+                    selectedContainerColor = accent,
                     selectedLabelColor = Color.White,
                     containerColor = Color(0xFF222631),
                     labelColor = Color(0xFFCBD5E1)
@@ -1032,26 +1234,27 @@ private fun MetaSettings(
     OutlinedTextField(
         value = exif.model,
         onValueChange = { onExifChange(exif.copy(model = it)) },
-        label = { Text("модель камеры", fontSize = 12.sp) },
+        label = { Text(stringResource(R.string.camera_model_label), fontSize = 12.sp) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = Color.White,
             unfocusedTextColor = Color.White,
-            focusedBorderColor = Color(0xFF818CF8),
+            focusedBorderColor = accent,
             unfocusedBorderColor = Color(0xFF334155),
-            focusedLabelColor = Color(0xFF818CF8),
+            focusedLabelColor = accent,
             unfocusedLabelColor = Color(0xFF94A3B8)
         )
     )
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    MetaToggle("показывать логотип", config.showLogo) { onConfigChange(config.copy(showLogo = it)) }
-    MetaToggle("показывать модель камеры", config.showModel) { onConfigChange(config.copy(showModel = it)) }
-    MetaToggle("показывать параметры (iso, выдержка, f-stop)", config.showParams) { onConfigChange(config.copy(showParams = it)) }
-    MetaToggle("показывать объектив", config.showLens) { onConfigChange(config.copy(showLens = it)) }
-    MetaToggle("показывать дату съёмки", config.showDate) { onConfigChange(config.copy(showDate = it)) }
+    MetaToggle(stringResource(R.string.toggle_logo), config.showLogo) { onConfigChange(config.copy(showLogo = it)) }
+    MetaToggle(stringResource(R.string.toggle_model), config.showModel) { onConfigChange(config.copy(showModel = it)) }
+    MetaToggle(stringResource(R.string.toggle_params), config.showParams) { onConfigChange(config.copy(showParams = it)) }
+    MetaToggle(stringResource(R.string.toggle_lens), config.showLens) { onConfigChange(config.copy(showLens = it)) }
+    MetaToggle(stringResource(R.string.toggle_date), config.showDate) { onConfigChange(config.copy(showDate = it)) }
+    MetaToggle(stringResource(R.string.toggle_separate_line), config.separateExtraLine) { onConfigChange(config.copy(separateExtraLine = it)) }
 }
 
 @Composable
@@ -1060,21 +1263,35 @@ private fun MetaToggle(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val context = LocalContext.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
-            .padding(vertical = 4.dp),
+            .clickable {
+                HapticFeedback.click(context)
+                onCheckedChange(!checked)
+            }
+            .padding(vertical = 5.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = label, fontSize = 13.sp, color = Color(0xFFE2E8F0))
+        Text(
+            text = label,
+            fontSize = 13.sp,
+            color = Color(0xFFE2E8F0),
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 12.dp)
+        )
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = {
+                HapticFeedback.click(context)
+                onCheckedChange(it)
+            },
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
-                checkedTrackColor = Color(0xFF4F46E5),
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
                 uncheckedThumbColor = Color(0xFF94A3B8),
                 uncheckedTrackColor = Color(0xFF262C3A)
             )
@@ -1086,6 +1303,7 @@ private fun MetaToggle(
 @Composable
 private fun SavedGalleryModal(
     context: Context,
+    accent: Color,
     onDismiss: () -> Unit,
     onOpenItem: (Uri) -> Unit
 ) {
@@ -1144,13 +1362,13 @@ private fun SavedGalleryModal(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "галерея работ (${savedItems.size})",
+                    text = "${stringResource(R.string.gallery_title)} (${savedItems.size})",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "закрыть", tint = Color.White)
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close), tint = Color.White)
                 }
             }
 
@@ -1158,7 +1376,7 @@ private fun SavedGalleryModal(
 
             if (isLoading) {
                 Box(modifier = Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF818CF8))
+                    CircularProgressIndicator(color = accent)
                 }
             } else if (savedItems.isEmpty()) {
                 Box(
@@ -1168,7 +1386,7 @@ private fun SavedGalleryModal(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "пока нет сохранённых работ в галерее",
+                        text = stringResource(R.string.gallery_empty),
                         fontSize = 14.sp,
                         color = Color(0xFF94A3B8)
                     )
@@ -1218,14 +1436,14 @@ private fun SavedGalleryModal(
                                                 putExtra(Intent.EXTRA_STREAM, item.uri)
                                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                             }
-                                            context.startActivity(Intent.createChooser(shareIntent, "поделиться"))
+                                            context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.share)))
                                         },
                                         modifier = Modifier.size(28.dp)
                                     ) {
                                         Icon(
                                             Icons.Default.Share,
-                                            contentDescription = "поделиться",
-                                            tint = Color(0xFF818CF8),
+                                            contentDescription = stringResource(R.string.share),
+                                            tint = accent,
                                             modifier = Modifier.size(16.dp)
                                         )
                                     }
@@ -1238,4 +1456,3 @@ private fun SavedGalleryModal(
         }
     }
 }
-
