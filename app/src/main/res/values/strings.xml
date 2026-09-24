@@ -69,4 +69,10 @@
     <string name="back_dialog_cancel">cancel</string>
     <string name="close">close</string>
     <string name="share">share</string>
+    <string name="reset_default">reset to default</string>
+    <string name="delete">delete</string>
+    <string name="delete_confirm_title">delete photo?</string>
+    <string name="delete_confirm_desc">this photo will be permanently deleted from device storage.</string>
+    <string name="cancel">cancel</string>
+    <string name="toast_deleted">photo deleted</string>
 </resources>

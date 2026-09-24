@@ -15,6 +15,10 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -45,13 +49,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.RotateLeft
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LinearScale
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tune
@@ -103,8 +108,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -245,6 +252,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
 
     // Material You Dynamic Colors
     val accentColor = MaterialTheme.colorScheme.primary
+    val onAccentColor = if (accentColor.luminance() > 0.55f) Color(0xFF0F172A) else Color.White
     val darkBg = Color(0xFF0D0F12)
     val cardSurface = Color(0xFF161920)
 
@@ -307,10 +315,10 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.CameraAlt,
+                                painter = painterResource(R.drawable.ic_framed_logo),
                                 contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                                tint = onAccentColor,
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(10.dp))
@@ -411,12 +419,14 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                     .weight(1f)
                     .fillMaxWidth()
                     .padding(2.dp)
-                    .clickable {
+                    .then(
                         if (fullBitmap != null) {
-                            HapticFeedback.tick(context)
-                            isSettingsVisible = !isSettingsVisible
-                        }
-                    },
+                            Modifier.clickable {
+                                HapticFeedback.tick(context)
+                                isSettingsVisible = !isSettingsVisible
+                            }
+                        } else Modifier
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 if (fullBitmap == null) {
@@ -435,16 +445,16 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(68.dp)
+                                    .size(76.dp)
                                     .clip(CircleShape)
                                     .background(Color(0xFF232733)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.PhotoCamera,
+                                    painter = painterResource(R.drawable.ic_framed_logo),
                                     contentDescription = null,
                                     tint = accentColor,
-                                    modifier = Modifier.size(34.dp)
+                                    modifier = Modifier.size(42.dp)
                                 )
                             }
                             Spacer(modifier = Modifier.height(18.dp))
@@ -470,11 +480,23 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                     )
                                 },
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = accentColor,
+                                    contentColor = onAccentColor
+                                )
                             ) {
-                                Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(
+                                    imageVector = Icons.Default.AddPhotoAlternate,
+                                    contentDescription = null,
+                                    tint = onAccentColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text(stringResource(R.string.gallery_open), fontWeight = FontWeight.Medium)
+                                Text(
+                                    text = stringResource(R.string.gallery_open),
+                                    fontWeight = FontWeight.Medium,
+                                    color = onAccentColor
+                                )
                             }
                         }
                     }
@@ -627,17 +649,17 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = accentColor,
-                                        contentColor = Color.White
+                                        contentColor = onAccentColor
                                     )
                                 ) {
                                     if (activeExportQuality == ExportQuality.TIKTOK_OPTIMIZED) {
-                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = onAccentColor, strokeWidth = 2.dp)
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text(batchProgress?.let { "${it.first}/${it.second}" } ?: "...", fontSize = 11.sp)
+                                        Text(batchProgress?.let { "${it.first}/${it.second}" } ?: "...", fontSize = 11.sp, color = onAccentColor)
                                     } else {
-                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = onAccentColor)
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text(stringResource(R.string.btn_export_social), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                        Text(stringResource(R.string.btn_export_social), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = onAccentColor)
                                     }
                                 }
                             }
@@ -683,9 +705,12 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = accentColor,
+                            contentColor = onAccentColor
+                        )
                     ) {
-                        Text(stringResource(R.string.back_dialog_save_original))
+                        Text(stringResource(R.string.back_dialog_save_original), color = onAccentColor)
                     }
                     Button(
                         onClick = {
@@ -697,7 +722,10 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5))
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF262C3A),
+                            contentColor = Color(0xFFE2E8F0)
+                        )
                     ) {
                         Text(stringResource(R.string.back_dialog_save_social))
                     }
@@ -857,6 +885,8 @@ private fun FormatSettings(
         value = config.photoScale,
         range = 0.70f..0.98f,
         accent = accent,
+        defaultValue = 0.95f,
+        step = 0.01f,
         onValueChange = { onConfigChange(config.copy(photoScale = it)) }
     )
 }
@@ -990,6 +1020,8 @@ private fun StyleSettings(
         value = config.cornerRadius,
         range = 0f..120f,
         accent = accent,
+        defaultValue = 60f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(cornerRadius = it)) }
     )
 
@@ -999,6 +1031,8 @@ private fun StyleSettings(
         value = config.blurRadius,
         range = 10f..60f,
         accent = accent,
+        defaultValue = 40f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(blurRadius = it)) }
     )
 
@@ -1008,6 +1042,8 @@ private fun StyleSettings(
         value = config.shadowAlpha,
         range = 0f..0.8f,
         accent = accent,
+        defaultValue = 0.38f,
+        step = 0.01f,
         onValueChange = { onConfigChange(config.copy(shadowAlpha = it)) }
     )
 
@@ -1017,6 +1053,8 @@ private fun StyleSettings(
         value = config.shadowRadius,
         range = 0f..90f,
         accent = accent,
+        defaultValue = 36f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(shadowRadius = it)) }
     )
 
@@ -1026,6 +1064,8 @@ private fun StyleSettings(
         value = config.shadowSpread,
         range = 0f..60f,
         accent = accent,
+        defaultValue = 8f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(shadowSpread = it)) }
     )
 
@@ -1035,6 +1075,8 @@ private fun StyleSettings(
         value = config.shadowOffsetY,
         range = 0f..80f,
         accent = accent,
+        defaultValue = 0f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(shadowOffsetY = it)) }
     )
 }
@@ -1051,6 +1093,8 @@ private fun SpacingSettings(
         value = config.textMasterScale,
         range = 0.5f..2.5f,
         accent = accent,
+        defaultValue = 1.5f,
+        step = 0.05f,
         onValueChange = { onConfigChange(config.copy(textMasterScale = it)) }
     )
 
@@ -1060,6 +1104,8 @@ private fun SpacingSettings(
         value = config.logoScale,
         range = 0.5f..2.5f,
         accent = accent,
+        defaultValue = 1.0f,
+        step = 0.05f,
         onValueChange = { onConfigChange(config.copy(logoScale = it)) }
     )
 
@@ -1069,6 +1115,8 @@ private fun SpacingSettings(
         value = config.fontSizeLine1,
         range = 16f..64f,
         accent = accent,
+        defaultValue = 34f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(fontSizeLine1 = it)) }
     )
 
@@ -1078,6 +1126,8 @@ private fun SpacingSettings(
         value = config.fontSizeLine2,
         range = 12f..48f,
         accent = accent,
+        defaultValue = 22f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(fontSizeLine2 = it)) }
     )
 
@@ -1087,6 +1137,8 @@ private fun SpacingSettings(
         value = config.logoOffsetY,
         range = -25f..25f,
         accent = accent,
+        defaultValue = 0f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(logoOffsetY = it)) }
     )
 
@@ -1096,6 +1148,8 @@ private fun SpacingSettings(
         value = config.logoGap,
         range = 4f..60f,
         accent = accent,
+        defaultValue = 20f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(logoGap = it)) }
     )
 
@@ -1105,6 +1159,8 @@ private fun SpacingSettings(
         value = config.lineSpacing,
         range = 10f..60f,
         accent = accent,
+        defaultValue = 32f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(lineSpacing = it)) }
     )
 
@@ -1114,6 +1170,8 @@ private fun SpacingSettings(
         value = config.footerVerticalOffset,
         range = -35f..35f,
         accent = accent,
+        defaultValue = 0f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(footerVerticalOffset = it)) }
     )
 
@@ -1123,6 +1181,8 @@ private fun SpacingSettings(
         value = config.textHorizontalOffset,
         range = -40f..40f,
         accent = accent,
+        defaultValue = 0f,
+        step = 1f,
         onValueChange = { onConfigChange(config.copy(textHorizontalOffset = it)) }
     )
 
@@ -1132,6 +1192,8 @@ private fun SpacingSettings(
         value = config.letterSpacing,
         range = 0f..0.15f,
         accent = accent,
+        defaultValue = 0.02f,
+        step = 0.005f,
         onValueChange = { onConfigChange(config.copy(letterSpacing = it)) }
     )
 }
@@ -1143,10 +1205,13 @@ private fun SettingSlider(
     value: Float,
     range: ClosedFloatingPointRange<Float>,
     accent: Color,
+    defaultValue: Float? = null,
+    step: Float = 0f,
     onValueChange: (Float) -> Unit
 ) {
     val context = LocalContext.current
     var lastTickValue by remember { mutableFloatStateOf(value) }
+    val isModified = defaultValue != null && kotlin.math.abs(value - defaultValue) > 0.005f
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1154,28 +1219,60 @@ private fun SettingSlider(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFFE2E8F0))
-        Surface(
-            color = Color(0xFF222733),
-            shape = RoundedCornerShape(6.dp)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(
-                text = valueText,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = accent,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-            )
+            AnimatedVisibility(
+                visible = isModified,
+                enter = fadeIn() + scaleIn(initialScale = 0.8f),
+                exit = fadeOut() + scaleOut(targetScale = 0.8f)
+            ) {
+                IconButton(
+                    onClick = {
+                        HapticFeedback.click(context)
+                        defaultValue?.let { onValueChange(it) }
+                    },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.RotateLeft,
+                        contentDescription = stringResource(R.string.reset_default),
+                        tint = accent.copy(alpha = 0.85f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            Surface(
+                color = Color(0xFF222733),
+                shape = RoundedCornerShape(6.dp)
+            ) {
+                Text(
+                    text = valueText,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = accent,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
         }
     }
     Spacer(modifier = Modifier.height(6.dp))
     Slider(
         value = value,
-        onValueChange = {
-            if (kotlin.math.abs(it - lastTickValue) > (range.endInclusive - range.start) * 0.06f) {
-                HapticFeedback.tick(context)
-                lastTickValue = it
+        onValueChange = { rawVal ->
+            val snappedValue = if (step > 0f) {
+                val steps = kotlin.math.round((rawVal - range.start) / step)
+                (range.start + steps * step).coerceIn(range.start, range.endInclusive)
+            } else {
+                rawVal
             }
-            onValueChange(it)
+            val tickThreshold = if (step > 0f) step else (range.endInclusive - range.start) * 0.06f
+            if (kotlin.math.abs(snappedValue - lastTickValue) >= tickThreshold) {
+                HapticFeedback.tick(context)
+                lastTickValue = snappedValue
+            }
+            onValueChange(snappedValue)
         },
         valueRange = range,
         colors = SliderDefaults.colors(
@@ -1308,6 +1405,7 @@ private fun SavedGalleryModal(
     onOpenItem: (Uri) -> Unit
 ) {
     var savedItems by remember { mutableStateOf<List<SavedFramedItem>>(emptyList()) }
+    var itemToDelete by remember { mutableStateOf<SavedFramedItem?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
@@ -1344,6 +1442,53 @@ private fun SavedGalleryModal(
             savedItems = list
             isLoading = false
         }
+    }
+
+    if (itemToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { itemToDelete = null },
+            containerColor = Color(0xFF1E222D),
+            title = {
+                Text(
+                    text = stringResource(R.string.delete_confirm_title),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.delete_confirm_desc),
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val target = itemToDelete
+                        itemToDelete = null
+                        target?.let { toDelete ->
+                            try {
+                                context.contentResolver.delete(toDelete.uri, null, null)
+                                HapticFeedback.success(context)
+                                savedItems = savedItems.filter { it.uri != toDelete.uri }
+                                Toast.makeText(context, context.getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, e.message ?: "Error", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.delete), color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToDelete = null }) {
+                    Text(stringResource(R.string.cancel), color = Color(0xFF94A3B8))
+                }
+            }
+        )
     }
 
     ModalBottomSheet(
@@ -1424,28 +1569,45 @@ private fun SavedGalleryModal(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = item.name.removePrefix("framed_").take(14),
+                                        text = item.name.removePrefix("framed_").take(12),
                                         fontSize = 11.sp,
                                         color = Color(0xFFCBD5E1),
-                                        maxLines = 1
+                                        maxLines = 1,
+                                        modifier = Modifier.weight(1f)
                                     )
-                                    IconButton(
-                                        onClick = {
-                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                type = "image/jpeg"
-                                                putExtra(Intent.EXTRA_STREAM, item.uri)
-                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                            }
-                                            context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.share)))
-                                        },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Share,
-                                            contentDescription = stringResource(R.string.share),
-                                            tint = accent,
-                                            modifier = Modifier.size(16.dp)
-                                        )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(
+                                            onClick = {
+                                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                    type = "image/jpeg"
+                                                    putExtra(Intent.EXTRA_STREAM, item.uri)
+                                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                }
+                                                context.startActivity(Intent.createChooser(shareIntent, context.getString(R.string.share)))
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Share,
+                                                contentDescription = stringResource(R.string.share),
+                                                tint = accent,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                HapticFeedback.click(context)
+                                                itemToDelete = item
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = stringResource(R.string.delete),
+                                                tint = Color(0xFF94A3B8),
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

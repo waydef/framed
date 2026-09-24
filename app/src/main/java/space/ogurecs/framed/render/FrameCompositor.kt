@@ -352,7 +352,7 @@ object FrameCompositor {
                     textPaint.textSize = paramsSize
                     textPaint.textAlign = Paint.Align.RIGHT
                     textPaint.color = Color.argb(235, 255, 255, 255)
-                    canvas.drawText(line2Text, photoRect.right + hOffset, splitBaselineY, textPaint)
+                    canvas.drawText(line2Text.trim(), photoRect.right + hOffset, splitBaselineY, textPaint)
                 }
 
                 if (hasLine3) {
@@ -361,7 +361,7 @@ object FrameCompositor {
                     textPaint.textSize = paramsSize * 0.95f
                     textPaint.textAlign = Paint.Align.RIGHT
                     textPaint.color = Color.argb(200, 255, 255, 255)
-                    canvas.drawText(line3Text, photoRect.right + hOffset, line3Y, textPaint)
+                    canvas.drawText(line3Text.trim(), photoRect.right + hOffset, line3Y, textPaint)
                 }
             }
             space.ogurecs.framed.model.TextAlignment.LEFT -> {
@@ -529,7 +529,7 @@ object FrameCompositor {
 
         if (quality == ExportQuality.TIKTOK_OPTIMIZED) {
             prefix = "framed_tiktok"
-            compressQuality = 96
+            compressQuality = 97
 
             // TikTok photo mode optimal screen dimensions (1080p width, max 1920p height)
             val origW = bitmap.width
@@ -600,8 +600,8 @@ object FrameCompositor {
         source.getPixels(pixels, 0, w, 0, 0, w, h)
         val outPixels = IntArray(w * h)
 
-        val cW = 1.35f
-        val nW = -0.0875f
+        val cW = 1.30f
+        val nW = -0.075f
 
         for (y in 0 until h) {
             val yOffset = y * w

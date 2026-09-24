@@ -69,4 +69,10 @@
     <string name="back_dialog_cancel">отмена</string>
     <string name="close">закрыть</string>
     <string name="share">поделиться</string>
+    <string name="reset_default">сбросить значение</string>
+    <string name="delete">удалить</string>
+    <string name="delete_confirm_title">удалить снимок?</string>
+    <string name="delete_confirm_desc">снимок будет безвозвратно удалён из медиатеки устройства.</string>
+    <string name="cancel">отмена</string>
+    <string name="toast_deleted">снимок удалён</string>
 </resources>
