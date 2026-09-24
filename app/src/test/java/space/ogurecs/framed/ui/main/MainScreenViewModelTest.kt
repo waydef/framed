@@ -75,7 +75,7 @@ class FramedModelTest {
     @Test
     fun testExportQualityBadges() {
         assertEquals("без потерь", ExportQuality.ORIGINAL_100.badge)
-        assertEquals("1080p • чётко", ExportQuality.TIKTOK_OPTIMIZED.badge)
+        assertEquals("2.5K • чётко", ExportQuality.TIKTOK_OPTIMIZED.badge)
     }
 }
 

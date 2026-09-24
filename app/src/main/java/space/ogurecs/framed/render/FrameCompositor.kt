@@ -3,6 +3,7 @@ package space.ogurecs.framed.render
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
@@ -12,7 +13,9 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
+import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -26,6 +29,7 @@ import space.ogurecs.framed.model.FrameConfig
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -118,7 +122,11 @@ object FrameCompositor {
             canvasW = (slotH * targetRatio).roundToInt()
         }
 
-        val output = Bitmap.createBitmap(canvasW, canvasH, Bitmap.Config.ARGB_8888)
+        val output = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && source.colorSpace != null) {
+            Bitmap.createBitmap(canvasW, canvasH, Bitmap.Config.ARGB_8888, true, source.colorSpace!!)
+        } else {
+            Bitmap.createBitmap(canvasW, canvasH, Bitmap.Config.ARGB_8888)
+        }
         val canvas = Canvas(output)
 
         // 1. Draw blurred background
@@ -176,6 +184,36 @@ object FrameCompositor {
         return output
     }
 
+    @Volatile
+    private var ditherTileShader: BitmapShader? = null
+
+    private fun getDitherPaint(): Paint {
+        val shader = ditherTileShader ?: synchronized(this) {
+            ditherTileShader ?: run {
+                val size = 256
+                val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+                val pixels = IntArray(size * size)
+                val rng = java.util.Random(1337)
+                for (i in pixels.indices) {
+                    val r1 = rng.nextFloat()
+                    val r2 = rng.nextFloat()
+                    val d = ((r1 - r2) * 1.5f).roundToInt()
+                    val alpha = Math.abs(d).coerceIn(0, 1)
+                    val colorVal = if (d >= 0) 255 else 0
+                    pixels[i] = (alpha shl 24) or (colorVal shl 16) or (colorVal shl 8) or colorVal
+                }
+                bmp.setPixels(pixels, 0, size, 0, 0, size, size)
+                BitmapShader(bmp, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT).also {
+                    ditherTileShader = it
+                }
+            }
+        }
+        return Paint(Paint.DITHER_FLAG).apply {
+            this.shader = shader
+            this.isDither = true
+        }
+    }
+
     private fun drawBlurredBackground(
         canvas: Canvas,
         source: Bitmap,
@@ -184,16 +222,28 @@ object FrameCompositor {
         config: FrameConfig
     ) {
         val thumbW = 320
-        val thumbH = max(240, (320f * ch / cw).roundToInt())
-        val thumb = Bitmap.createScaledBitmap(source, thumbW, thumbH, true)
-        val blurredThumb = fastBlur(thumb, config.blurRadius.roundToInt().coerceIn(4, 50))
+        val thumbH = max(240, (thumbW.toFloat() * ch / cw).roundToInt())
+        val thumb = if (source.width == thumbW && source.height == thumbH) {
+            source.copy(Bitmap.Config.ARGB_8888, true)
+        } else {
+            Bitmap.createScaledBitmap(source, thumbW, thumbH, true)
+        }
+        val effectiveRadius = config.blurRadius.roundToInt().coerceIn(4, 50)
+        val blurredThumb = fastBlur(thumb, effectiveRadius)
 
         val dstRect = Rect(0, 0, cw, ch)
-        val bgPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+        val bgPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG).apply {
             isAntiAlias = true
+            isDither = true
         }
         canvas.drawBitmap(blurredThumb, null, dstRect, bgPaint)
-        blurredThumb.recycle()
+
+        if (blurredThumb != source && !blurredThumb.isRecycled) {
+            blurredThumb.recycle()
+        }
+        if (thumb != source && thumb != blurredThumb && !thumb.isRecycled) {
+            thumb.recycle()
+        }
 
         val dimAlpha = (config.blurDimming.coerceIn(0f, 0.8f) * 255).roundToInt()
         if (dimAlpha > 0) {
@@ -202,6 +252,9 @@ object FrameCompositor {
             }
             canvas.drawRect(0f, 0f, cw.toFloat(), ch.toFloat(), dimPaint)
         }
+
+        // Anti-banding dither pass prevents posterization in lossy video and social media encoders
+        canvas.drawRect(0f, 0f, cw.toFloat(), ch.toFloat(), getDitherPaint())
     }
 
     private fun drawSoftShadow(
@@ -237,7 +290,7 @@ object FrameCompositor {
         canvas.drawRoundRect(shadowRect, shadowCorner, shadowCorner, shadowPaint)
     }
 
-    private val typefaceCache = mutableMapOf<String, Typeface>()
+    private val typefaceCache = ConcurrentHashMap<String, Typeface>()
 
     private fun getTypeface(context: Context, option: space.ogurecs.framed.model.FontOption, weight: space.ogurecs.framed.model.CustomFontWeight): Typeface {
         val key = "${option.name}_${weight.name}"
@@ -501,7 +554,8 @@ object FrameCompositor {
             space.ogurecs.framed.model.LogoColorMode.MATCH_TEXT -> Color.WHITE
             space.ogurecs.framed.model.LogoColorMode.BRAND -> when (brand) {
                 space.ogurecs.framed.model.CameraBrand.CANON -> Color.parseColor("#CC0000")
-                space.ogurecs.framed.model.CameraBrand.SONY -> Color.parseColor("#FF6600")
+                space.ogurecs.framed.model.CameraBrand.SONY,
+                space.ogurecs.framed.model.CameraBrand.SONY_ALPHA -> Color.parseColor("#FF6600")
                 space.ogurecs.framed.model.CameraBrand.NIKON -> Color.parseColor("#FFE100")
                 space.ogurecs.framed.model.CameraBrand.LUMIX -> Color.parseColor("#E60012")
                 space.ogurecs.framed.model.CameraBrand.LEICA -> null
@@ -524,37 +578,38 @@ object FrameCompositor {
         quality: ExportQuality = ExportQuality.ORIGINAL_100
     ): Uri? {
         val exportBitmap: Bitmap
-        val compressQuality: Int
+        val compressQuality = 100
         val prefix: String
 
         if (quality == ExportQuality.TIKTOK_OPTIMIZED) {
             prefix = "framed_tiktok"
-            compressQuality = 97
 
-            // TikTok photo mode optimal screen dimensions (1080p width, max 1920p height)
+            // TikTok photo mode optimal dimensions (up to 2560px max dimension, native 2K/2.5K)
             val origW = bitmap.width
             val origH = bitmap.height
-            val scale = min(1.0f, min(1080f / origW, 1920f / origH))
+            val maxAllowed = 2560f
+            val maxOrig = max(origW, origH).toFloat()
+            val scale = if (maxOrig > maxAllowed) maxAllowed / maxOrig else 1.0f
             val targetW = max(1, (origW * scale).roundToInt())
             val targetH = max(1, (origH * scale).roundToInt())
 
-            val scaled = if (targetW != origW || targetH != origH) {
+            exportBitmap = if (targetW != origW || targetH != origH) {
                 Bitmap.createScaledBitmap(bitmap, targetW, targetH, true)
             } else {
-                bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, true)
+                bitmap
             }
-
-            // Restore micro-contrast and typographic sharpness so TikTok ingestion doesn't blur
-            val sharpened = sharpenForWeb(scaled)
-            if (scaled != bitmap) scaled.recycle()
-            exportBitmap = sharpened
         } else {
             prefix = "framed_original"
-            compressQuality = 100
             exportBitmap = bitmap
         }
 
-        val filename = "${prefix}_${title}_${System.currentTimeMillis()}.jpg"
+        val sanitizedTitle = title.trim()
+            .replace(Regex("[/\\\\:*?\"<>|\\s]+"), "_")
+            .replace(Regex("^\\.+"), "")
+            .take(64)
+            .ifBlank { "photo" }
+
+        val filename = "${prefix}_${sanitizedTitle}_${System.currentTimeMillis()}.jpg"
 
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -567,85 +622,65 @@ object FrameCompositor {
 
                 val resolver = context.contentResolver
                 val insertUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-                if (insertUri != null) {
+                    ?: return null
+
+                var writeSuccess = false
+                try {
                     resolver.openOutputStream(insertUri)?.use { stream ->
-                        exportBitmap.compress(Bitmap.CompressFormat.JPEG, compressQuality, stream)
+                        writeSuccess = exportBitmap.compress(Bitmap.CompressFormat.JPEG, compressQuality, stream)
+                        stream.flush()
                     }
+                } catch (e: Exception) {
+                    writeSuccess = false
+                }
+
+                if (writeSuccess) {
                     contentValues.clear()
                     contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
                     resolver.update(insertUri, contentValues, null, null)
                     insertUri
-                } else null
+                } else {
+                    resolver.delete(insertUri, null, null)
+                    null
+                }
             } else {
                 val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Framed")
-                if (!dir.exists()) dir.mkdirs()
-                val file = File(dir, filename)
-                FileOutputStream(file).use { out ->
-                    exportBitmap.compress(Bitmap.CompressFormat.JPEG, compressQuality, out)
+                if (!dir.exists() && !dir.mkdirs() && !dir.isDirectory) {
+                    return null
                 }
-                Uri.fromFile(file)
+                val file = File(dir, filename)
+                var writeSuccess = false
+                try {
+                    FileOutputStream(file).use { out ->
+                        writeSuccess = exportBitmap.compress(Bitmap.CompressFormat.JPEG, compressQuality, out)
+                        out.flush()
+                    }
+                } catch (e: Exception) {
+                    writeSuccess = false
+                }
+
+                if (writeSuccess) {
+                    MediaScannerConnection.scanFile(
+                        context,
+                        arrayOf(file.absolutePath),
+                        arrayOf("image/jpeg"),
+                        null
+                    )
+                    Uri.fromFile(file)
+                } else {
+                    if (file.exists()) {
+                        file.delete()
+                    }
+                    null
+                }
             }
+        } catch (e: Exception) {
+            null
         } finally {
             if (exportBitmap != bitmap) {
                 exportBitmap.recycle()
             }
         }
-    }
-
-    private fun sharpenForWeb(source: Bitmap): Bitmap {
-        val w = source.width
-        val h = source.height
-        val output = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val pixels = IntArray(w * h)
-        source.getPixels(pixels, 0, w, 0, 0, w, h)
-        val outPixels = IntArray(w * h)
-
-        val cW = 1.30f
-        val nW = -0.075f
-
-        for (y in 0 until h) {
-            val yOffset = y * w
-            val yPrev = max(0, y - 1) * w
-            val yNext = min(h - 1, y + 1) * w
-
-            for (x in 0 until w) {
-                val xPrev = max(0, x - 1)
-                val xNext = min(w - 1, x + 1)
-
-                val pC = pixels[yOffset + x]
-                val pT = pixels[yPrev + x]
-                val pB = pixels[yNext + x]
-                val pL = pixels[yOffset + xPrev]
-                val pR = pixels[yOffset + xNext]
-
-                val a = (pC ushr 24) and 0xFF
-
-                val rC = (pC ushr 16) and 0xFF
-                val rT = (pT ushr 16) and 0xFF
-                val rB = (pB ushr 16) and 0xFF
-                val rL = (pL ushr 16) and 0xFF
-                val rR = (pR ushr 16) and 0xFF
-                val nR = (rC * cW + (rT + rB + rL + rR) * nW).roundToInt().coerceIn(0, 255)
-
-                val gC = (pC ushr 8) and 0xFF
-                val gT = (pT ushr 8) and 0xFF
-                val gB = (pB ushr 8) and 0xFF
-                val gL = (pL ushr 8) and 0xFF
-                val gR = (pR ushr 8) and 0xFF
-                val nG = (gC * cW + (gT + gB + gL + gR) * nW).roundToInt().coerceIn(0, 255)
-
-                val bC = pC and 0xFF
-                val bT = pT and 0xFF
-                val bB = pB and 0xFF
-                val bL = pL and 0xFF
-                val bR = pR and 0xFF
-                val nB = (bC * cW + (bT + bB + bL + bR) * nW).roundToInt().coerceIn(0, 255)
-
-                outPixels[yOffset + x] = (a shl 24) or (nR shl 16) or (nG shl 8) or nB
-            }
-        }
-        output.setPixels(outPixels, 0, w, 0, 0, w, h)
-        return output
     }
 
 

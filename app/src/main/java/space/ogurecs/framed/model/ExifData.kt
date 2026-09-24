@@ -100,7 +100,7 @@ enum class TextAlignment(val label: String) {
 
 enum class ExportQuality(val label: String, val badge: String) {
     ORIGINAL_100("оригинал 100%", "без потерь"),
-    TIKTOK_OPTIMIZED("для соцсетей", "1080p • чётко")
+    TIKTOK_OPTIMIZED("для соцсетей", "2.5K • чётко")
 }
 
 data class FrameConfig(

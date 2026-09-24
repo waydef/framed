@@ -271,17 +271,23 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                     val raw = BitmapFactory.decodeStream(st)
                                     if (raw != null) {
                                         val rendered = FrameCompositor.render(context, raw, parsed, config)
-                                        FrameCompositor.saveToGallery(context, rendered, parsed.model.ifBlank { "photo" }, quality)
-                                        rendered.recycle()
-                                        raw.recycle()
+                                        try {
+                                            FrameCompositor.saveToGallery(context, rendered, parsed.model.ifBlank { "photo" }, quality)
+                                        } finally {
+                                            rendered.recycle()
+                                            raw.recycle()
+                                        }
                                     }
                                 }
                             }
                         } else {
                             batchProgress = Pair(1, 1)
                             val renderedHighRes = FrameCompositor.render(context, src, exifData, config)
-                            FrameCompositor.saveToGallery(context, renderedHighRes, exifData.model.ifBlank { "photo" }, quality)
-                            renderedHighRes.recycle()
+                            try {
+                                FrameCompositor.saveToGallery(context, renderedHighRes, exifData.model.ifBlank { "photo" }, quality)
+                            } finally {
+                                renderedHighRes.recycle()
+                            }
                         }
                     }
                     HapticFeedback.success(context)
@@ -638,7 +644,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                     }
                                 }
 
-                                // 2. Export for Social Media / TikTok (1080p, smart unsharp sharpening, optimal 96% JPEG)
+                                // 2. Export for Social Media / TikTok (up to 2.5K native, anti-banding dither, 100% quality)
                                 Button(
                                     onClick = {
                                         HapticFeedback.click(context)
