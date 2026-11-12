@@ -73,6 +73,17 @@ class FramedModelTest {
     }
 
     @Test
+    fun testAppleIdentifiersMapToTheRightGeneration() {
+        fun name(id: String) = space.ogurecs.framed.parser.CameraModelNormalizer.normalize(CameraBrand.APPLE, "Apple", id)
+        assertEquals("iPhone 15 Pro", name("iPhone16,1"))
+        assertEquals("iPhone 15 Pro Max", name("iPhone16,2"))
+        assertEquals("iPhone 16 Pro", name("iPhone17,1"))
+        assertEquals("iPhone 16 Pro Max", name("iPhone17,2"))
+        // the marketing name Apple writes into EXIF stays as it is
+        assertEquals("iPhone 15 Pro", name("iPhone 15 Pro"))
+    }
+
+    @Test
     fun testExportQualityBadges() {
         assertEquals("без потерь", ExportQuality.ORIGINAL_100.badge)
         assertEquals("2.5K • чётко", ExportQuality.TIKTOK_OPTIMIZED.badge)

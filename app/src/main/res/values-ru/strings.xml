@@ -60,6 +60,9 @@
     <string name="toast_saved_original">сохранено в 100% качестве!</string>
     <string name="toast_saved_original_all">все фото сохранены в 100% качестве!</string>
     <string name="toast_export_error">ошибка экспорта</string>
+    <string name="toast_saved_partial">сохранено %1$d из %2$d фото</string>
+    <string name="toast_permission_denied">для сохранения фото на этой версии android нужен доступ к памяти</string>
+    <string name="toast_load_error">не удалось открыть это фото</string>
 
     <string name="back_dialog_title">выйти в главное меню?</string>
     <string name="back_dialog_desc">сохранить оформленное фото перед выходом?</string>

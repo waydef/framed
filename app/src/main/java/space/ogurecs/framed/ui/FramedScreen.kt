@@ -2,9 +2,10 @@ package space.ogurecs.framed.ui
 
 import android.content.ContentUris
 import android.content.Context
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -121,7 +122,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import space.ogurecs.framed.R
@@ -133,10 +138,10 @@ import space.ogurecs.framed.model.ExportQuality
 import space.ogurecs.framed.model.FontOption
 import space.ogurecs.framed.model.FrameConfig
 import space.ogurecs.framed.model.LogoColorMode
-import space.ogurecs.framed.parser.ExifParser
 import space.ogurecs.framed.render.FrameCompositor
 import space.ogurecs.framed.util.ConfigStorage
 import space.ogurecs.framed.util.HapticFeedback
+import space.ogurecs.framed.util.ImageLoader
 import kotlin.math.max
 
 data class SavedFramedItem(
@@ -191,33 +196,6 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
         }
     }
 
-    fun loadUri(uri: Uri) {
-        scope.launch {
-            isProcessing = true
-            withContext(Dispatchers.IO) {
-                try {
-                    val parsedExif = ExifParser.parse(context, uri)
-                    exifData = parsedExif
-
-                    val stream = try {
-                        context.contentResolver.openInputStream(uri)
-                    } catch (e: Exception) {
-                        if (uri.path != null) java.io.FileInputStream(java.io.File(uri.path!!)) else null
-                    }
-                    stream?.use { st ->
-                        val options = BitmapFactory.Options().apply {
-                            inPreferredConfig = Bitmap.Config.ARGB_8888
-                        }
-                        fullBitmap = BitmapFactory.decodeStream(st, null, options)
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-            isProcessing = false
-        }
-    }
-
     val multiplePhotosPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
@@ -225,29 +203,55 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
             HapticFeedback.click(context)
             selectedUris = uris
             currentUriIndex = 0
-            loadUri(uris[0])
         }
     }
 
+    // One loader for the current photo. A new key cancels the previous run, and the bitmap and its
+    // EXIF are published together, so a slow earlier photo can never land on top of a later one.
     LaunchedEffect(currentUriIndex, selectedUris) {
         if (selectedUris.isNotEmpty() && currentUriIndex in selectedUris.indices) {
-            loadUri(selectedUris[currentUriIndex])
+            isProcessing = true
+            try {
+                val loaded = withContext(Dispatchers.IO) { ImageLoader.load(context, selectedUris[currentUriIndex]) }
+                if (loaded != null) {
+                    exifData = loaded.exif
+                    fullBitmap = loaded.bitmap
+                } else {
+                    Toast.makeText(context, context.getString(R.string.toast_load_error), Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                // a cancelled run belongs to an older key; the run that replaced it owns the flag
+                if (isActive) isProcessing = false
+            }
+        } else {
+            isProcessing = false
         }
     }
 
-    LaunchedEffect(fullBitmap, config, exifData) {
-        val src = fullBitmap ?: return@LaunchedEffect
-        withContext(Dispatchers.Default) {
+    // The scaled-down copy for the live preview is made once per photo, not on every slider step.
+    var previewSource by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(fullBitmap) {
+        val src = fullBitmap
+        previewSource = if (src == null) null else withContext(Dispatchers.Default) {
             val maxPreviewDim = 1200
             val scale = minOf(1f, maxPreviewDim.toFloat() / max(src.width, src.height))
-            val previewSrc = if (scale < 1f) {
+            if (scale < 1f) {
                 Bitmap.createScaledBitmap(src, (src.width * scale).toInt(), (src.height * scale).toInt(), true)
             } else {
                 src
             }
-            val rendered = FrameCompositor.render(context, previewSrc, exifData, config)
-            previewBitmap = rendered
         }
+    }
+
+    LaunchedEffect(previewSource, config, exifData) {
+        val src = previewSource ?: return@LaunchedEffect
+        // a new key cancels this run; the short delay drops the renders of fast slider drags
+        delay(30)
+        val rendered = withContext(Dispatchers.Default) {
+            ensureActive()
+            FrameCompositor.render(context, src, exifData, config)
+        }
+        previewBitmap = rendered
     }
 
     // Material You Dynamic Colors
@@ -256,54 +260,91 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
     val darkBg = Color(0xFF0D0F12)
     val cardSurface = Color(0xFF161920)
 
-    val runExport: (ExportQuality) -> Unit = { quality ->
+    // Saves the current photo, or every selected photo. The lists and the EXIF are read here, before the
+    // coroutine starts, because callers clear the selection right after calling.
+    fun startExport(quality: ExportQuality, onFinished: (Boolean) -> Unit) {
         val src = fullBitmap
-        if (src != null) {
-            scope.launch {
-                activeExportQuality = quality
-                try {
-                    withContext(Dispatchers.Default) {
-                        if (selectedUris.size > 1) {
-                            selectedUris.forEachIndexed { idx, u ->
-                                batchProgress = Pair(idx + 1, selectedUris.size)
-                                val parsed = ExifParser.parse(context, u)
-                                context.contentResolver.openInputStream(u)?.use { st ->
-                                    val raw = BitmapFactory.decodeStream(st)
-                                    if (raw != null) {
-                                        val rendered = FrameCompositor.render(context, raw, parsed, config)
-                                        try {
-                                            FrameCompositor.saveToGallery(context, rendered, parsed.model.ifBlank { "photo" }, quality)
-                                        } finally {
-                                            rendered.recycle()
-                                            raw.recycle()
-                                        }
+        if (src == null || activeExportQuality != null || isProcessing) {
+            onFinished(false)
+            return
+        }
+        val uris = selectedUris
+        val currentIndex = currentUriIndex
+        val currentExif = exifData
+        val frameConfig = config
+        scope.launch {
+            activeExportQuality = quality
+            var attempted = 0
+            var saved = 0
+            try {
+                withContext(Dispatchers.Default) {
+                    if (uris.size > 1) {
+                        attempted = uris.size
+                        uris.forEachIndexed { idx, u ->
+                            batchProgress = Pair(idx + 1, uris.size)
+                            if (idx == currentIndex) {
+                                if (exportOne(context, src, currentExif, frameConfig, quality)) saved++
+                            } else {
+                                val loaded = ImageLoader.load(context, u)
+                                if (loaded != null) {
+                                    try {
+                                        if (exportOne(context, loaded.bitmap, loaded.exif, frameConfig, quality)) saved++
+                                    } finally {
+                                        loaded.bitmap.recycle()
                                     }
                                 }
                             }
-                        } else {
-                            batchProgress = Pair(1, 1)
-                            val renderedHighRes = FrameCompositor.render(context, src, exifData, config)
-                            try {
-                                FrameCompositor.saveToGallery(context, renderedHighRes, exifData.model.ifBlank { "photo" }, quality)
-                            } finally {
-                                renderedHighRes.recycle()
-                            }
                         }
-                    }
-                    HapticFeedback.success(context)
-                    val msg = if (quality == ExportQuality.TIKTOK_OPTIMIZED) {
-                        if (selectedUris.size > 1) context.getString(R.string.toast_saved_social_all) else context.getString(R.string.toast_saved_social)
                     } else {
-                        if (selectedUris.size > 1) context.getString(R.string.toast_saved_original_all) else context.getString(R.string.toast_saved_original)
+                        attempted = 1
+                        batchProgress = Pair(1, 1)
+                        if (exportOne(context, src, currentExif, frameConfig, quality)) saved++
                     }
-                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(context, "${context.getString(R.string.toast_export_error)}: ${e.message}", Toast.LENGTH_SHORT).show()
-                } finally {
-                    activeExportQuality = null
-                    batchProgress = null
                 }
+            } finally {
+                activeExportQuality = null
+                batchProgress = null
             }
+
+            val message = when {
+                saved == 0 -> context.getString(R.string.toast_export_error)
+                saved < attempted -> context.getString(R.string.toast_saved_partial, saved, attempted)
+                quality == ExportQuality.TIKTOK_OPTIMIZED ->
+                    if (attempted > 1) context.getString(R.string.toast_saved_social_all) else context.getString(R.string.toast_saved_social)
+                else ->
+                    if (attempted > 1) context.getString(R.string.toast_saved_original_all) else context.getString(R.string.toast_saved_original)
+            }
+            if (saved > 0) HapticFeedback.success(context)
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            onFinished(saved == attempted && attempted > 0)
+        }
+    }
+
+    // Android 8 and 9 need the storage permission at run time before a file can go to Pictures/Framed.
+    var pendingExport by remember { mutableStateOf<Pair<ExportQuality, (Boolean) -> Unit>?>(null) }
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val pending = pendingExport
+        pendingExport = null
+        if (pending != null) {
+            if (granted) {
+                startExport(pending.first, pending.second)
+            } else {
+                Toast.makeText(context, context.getString(R.string.toast_permission_denied), Toast.LENGTH_LONG).show()
+                pending.second(false)
+            }
+        }
+    }
+
+    fun runExport(quality: ExportQuality, onFinished: (Boolean) -> Unit = {}) {
+        val needsPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            pendingExport = Pair(quality, onFinished)
+            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            startExport(quality, onFinished)
         }
     }
 
@@ -625,7 +666,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                         HapticFeedback.click(context)
                                         runExport(ExportQuality.ORIGINAL_100)
                                     },
-                                    enabled = activeExportQuality == null && fullBitmap != null,
+                                    enabled = activeExportQuality == null && fullBitmap != null && !isProcessing,
                                     modifier = Modifier.weight(1f).height(46.dp),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
@@ -650,7 +691,7 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                                         HapticFeedback.click(context)
                                         runExport(ExportQuality.TIKTOK_OPTIMIZED)
                                     },
-                                    enabled = activeExportQuality == null && fullBitmap != null,
+                                    enabled = activeExportQuality == null && fullBitmap != null && !isProcessing,
                                     modifier = Modifier.weight(1f).height(46.dp),
                                     shape = RoundedCornerShape(12.dp),
                                     colors = ButtonDefaults.buttonColors(
@@ -705,9 +746,14 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                         onClick = {
                             HapticFeedback.click(context)
                             showExitDialog = false
-                            runExport(ExportQuality.ORIGINAL_100)
-                            fullBitmap = null
-                            selectedUris = emptyList()
+                            // leave the editor only after the files are really saved
+                            runExport(ExportQuality.ORIGINAL_100) { ok ->
+                                if (ok) {
+                                    fullBitmap = null
+                                    previewBitmap = null
+                                    selectedUris = emptyList()
+                                }
+                            }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
@@ -722,9 +768,13 @@ fun FramedScreen(initialUris: List<Uri> = emptyList()) {
                         onClick = {
                             HapticFeedback.click(context)
                             showExitDialog = false
-                            runExport(ExportQuality.TIKTOK_OPTIMIZED)
-                            fullBitmap = null
-                            selectedUris = emptyList()
+                            runExport(ExportQuality.TIKTOK_OPTIMIZED) { ok ->
+                                if (ok) {
+                                    fullBitmap = null
+                                    previewBitmap = null
+                                    selectedUris = emptyList()
+                                }
+                            }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
@@ -1402,6 +1452,27 @@ private fun MetaToggle(
     }
 }
 
+/** Renders one photo and writes it to the gallery. Returns true only when the file was really saved. */
+private fun exportOne(
+    context: Context,
+    source: Bitmap,
+    exif: ExifData,
+    config: FrameConfig,
+    quality: ExportQuality
+): Boolean {
+    var rendered: Bitmap? = null
+    return try {
+        rendered = FrameCompositor.renderForExport(context, source, exif, config, quality)
+        FrameCompositor.saveToGallery(context, rendered, exif.model.ifBlank { "photo" }, quality) != null
+    } catch (e: Exception) {
+        false
+    } catch (e: OutOfMemoryError) {
+        false
+    } finally {
+        rendered?.recycle()
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SavedGalleryModal(
@@ -1410,6 +1481,7 @@ private fun SavedGalleryModal(
     onDismiss: () -> Unit,
     onOpenItem: (Uri) -> Unit
 ) {
+    val galleryScope = rememberCoroutineScope()
     var savedItems by remember { mutableStateOf<List<SavedFramedItem>>(emptyList()) }
     var itemToDelete by remember { mutableStateOf<SavedFramedItem?>(null) }
     var isLoading by remember { mutableStateOf(true) }
@@ -1422,8 +1494,9 @@ private fun SavedGalleryModal(
                 MediaStore.Images.Media.DISPLAY_NAME,
                 MediaStore.Images.Media.DATE_ADDED
             )
-            val selection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ?"
-            val selectionArgs = arrayOf("framed_%")
+            // "_" is a wildcard in LIKE; escape it so only names that start with "framed_" match
+            val selection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE ? ESCAPE '\\'"
+            val selectionArgs = arrayOf("framed\\_%")
             val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
 
             context.contentResolver.query(
@@ -1475,13 +1548,18 @@ private fun SavedGalleryModal(
                         val target = itemToDelete
                         itemToDelete = null
                         target?.let { toDelete ->
-                            try {
-                                context.contentResolver.delete(toDelete.uri, null, null)
-                                HapticFeedback.success(context)
-                                savedItems = savedItems.filter { it.uri != toDelete.uri }
-                                Toast.makeText(context, context.getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
-                            } catch (e: Exception) {
-                                Toast.makeText(context, e.message ?: "Error", Toast.LENGTH_SHORT).show()
+                            // the delete goes through MediaStore, keep it off the main thread
+                            galleryScope.launch {
+                                try {
+                                    withContext(Dispatchers.IO) {
+                                        context.contentResolver.delete(toDelete.uri, null, null)
+                                    }
+                                    HapticFeedback.success(context)
+                                    savedItems = savedItems.filter { it.uri != toDelete.uri }
+                                    Toast.makeText(context, context.getString(R.string.toast_deleted), Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, e.message ?: "Error", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         }
                     }

@@ -84,7 +84,9 @@ data class ExifData(
     val iso: String = "",
     val dateTime: String = "",
     val width: Int = 0,
-    val height: Int = 0
+    val height: Int = 0,
+    /** EXIF orientation tag, 1 means the pixels are stored upright. */
+    val orientation: Int = 1
 ) {
     val formattedParams: String
         get() = listOf(focalLength, aperture, shutterSpeed, iso)

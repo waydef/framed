@@ -12,12 +12,8 @@ object ExifParser {
 
     fun parse(context: Context, uri: Uri): ExifData {
         return try {
-            val stream = try {
-                context.contentResolver.openInputStream(uri)
-            } catch (e: Exception) {
-                if (uri.path != null) java.io.FileInputStream(java.io.File(uri.path!!)) else null
-            }
-            stream?.use { parse(it) } ?: ExifData()
+            // only content the system hands out through the resolver is read, never a raw file path
+            context.contentResolver.openInputStream(uri)?.use { parse(it) } ?: ExifData()
         } catch (e: Exception) {
             ExifData()
         }
@@ -48,10 +44,8 @@ object ExifParser {
         val iso = exif.getAttributeInt(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY, 0)
         val isoStr = if (iso > 0) "ISO$iso" else ""
 
-        val dateTime = exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
-            ?.replace(":", ".")
-            ?.take(16)
-            .orEmpty()
+        val dateTime = formatExifDate(exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL))
+        val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 1)
 
         val width = exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0)
         val height = exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0)
@@ -70,8 +64,21 @@ object ExifParser {
             iso = isoStr,
             dateTime = dateTime,
             width = width,
-            height = height
+            height = height,
+            orientation = orientation
         )
+    }
+
+    /** "2024:05:17 14:32:10" becomes "2024.05.17 14:32". Anything else is returned cut to 16 characters. */
+    internal fun formatExifDate(raw: String?): String {
+        val value = raw?.trim().orEmpty()
+        val match = Regex("^(\\d{4}):(\\d{2}):(\\d{2})[ T](\\d{2}):(\\d{2})").find(value)
+        return if (match != null) {
+            val (year, month, day, hour, minute) = match.destructured
+            "$year.$month.$day $hour:$minute"
+        } else {
+            value.take(16)
+        }
     }
 
 
@@ -155,8 +162,10 @@ object CameraModelNormalizer {
             }
             CameraBrand.APPLE -> {
                 when (trimmed) {
-                    "iPhone16,2" -> "iPhone 16 Pro Max"
-                    "iPhone16,1" -> "iPhone 16 Pro"
+                    "iPhone17,2" -> "iPhone 16 Pro Max"
+                    "iPhone17,1" -> "iPhone 16 Pro"
+                    "iPhone16,2" -> "iPhone 15 Pro Max"
+                    "iPhone16,1" -> "iPhone 15 Pro"
                     "iPhone15,3" -> "iPhone 14 Pro Max"
                     "iPhone15,2" -> "iPhone 14 Pro"
                     "iPhone15,5" -> "iPhone 15 Plus"

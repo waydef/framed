@@ -36,14 +36,33 @@ import kotlin.math.roundToInt
 
 object FrameCompositor {
 
-    fun render(
-        context: Context,
-        source: Bitmap,
-        exif: ExifData,
-        config: FrameConfig
-    ): Bitmap {
-        val srcW = source.width.toFloat()
-        val srcH = source.height.toFloat()
+    /** Size and text layout of the framed picture for a source of the given size. Pure arithmetic. */
+    internal data class Layout(
+        val srcW: Float,
+        val srcH: Float,
+        val refDim: Float,
+        val titleSize: Float,
+        val paramsSize: Float,
+        val lineSpacing: Float,
+        val brandRes: Int?,
+        val modelText: String,
+        val brandName: String,
+        val hasLogo: Boolean,
+        val hasLine1: Boolean,
+        val hasLine2: Boolean,
+        val line2Text: String,
+        val hasLine3: Boolean,
+        val line3Text: String,
+        val footerHeight: Float,
+        val gapBelowPhoto: Float,
+        val totalContentH: Float,
+        val canvasW: Int,
+        val canvasH: Int
+    )
+
+    internal fun computeLayout(srcWidth: Int, srcHeight: Int, exif: ExifData, config: FrameConfig): Layout {
+        val srcW = srcWidth.toFloat()
+        val srcH = srcHeight.toFloat()
         val baseAspect = max(srcW, srcH) / max(1f, min(srcW, srcH))
         val refDim = min(srcW, srcH) * minOf(1.0f, baseAspect / 1.5f)
 
@@ -121,6 +140,98 @@ object FrameCompositor {
             canvasH = slotH.roundToInt()
             canvasW = (slotH * targetRatio).roundToInt()
         }
+
+        return Layout(
+            srcW, srcH, refDim, titleSize, paramsSize, lineSpacing, brandRes, modelText, brandName,
+            hasLogo, hasLine1, hasLine2, line2Text, hasLine3, line3Text, footerHeight, gapBelowPhoto,
+            totalContentH, canvasW, canvasH
+        )
+    }
+
+    /** Longest canvas side of the social media export. */
+    internal const val SOCIAL_MAX_SIDE = 2560
+
+    /** Pixel budget of the "original" export, about 320 MB as ARGB_8888, above the 71 MP of a 24 MP photo in a default 9:16 frame. */
+    internal const val ORIGINAL_MAX_PIXELS = 80_000_000L
+
+    /**
+     * Factor (at most 1) to shrink the source by before rendering, so that the finished canvas
+     * stays inside the limit of the chosen export quality. The layout grows linearly with the
+     * source, so the factor can be computed from the canvas of the unscaled source.
+     */
+    internal fun exportSourceScale(
+        srcWidth: Int,
+        srcHeight: Int,
+        exif: ExifData,
+        config: FrameConfig,
+        quality: ExportQuality
+    ): Float {
+        val layout = computeLayout(srcWidth, srcHeight, exif, config)
+        return when (quality) {
+            ExportQuality.TIKTOK_OPTIMIZED -> {
+                val side = max(layout.canvasW, layout.canvasH).toFloat()
+                if (side > SOCIAL_MAX_SIDE) SOCIAL_MAX_SIDE / side else 1f
+            }
+            ExportQuality.ORIGINAL_100 -> {
+                val pixels = layout.canvasW.toLong() * layout.canvasH.toLong()
+                if (pixels > ORIGINAL_MAX_PIXELS) kotlin.math.sqrt(ORIGINAL_MAX_PIXELS.toDouble() / pixels).toFloat() else 1f
+            }
+        }
+    }
+
+    /**
+     * Renders the framed picture for saving. A huge canvas (small photo scale, tall ratio) is never
+     * built at full size: the source is shrunk first. The caller owns the returned bitmap.
+     */
+    fun renderForExport(
+        context: Context,
+        source: Bitmap,
+        exif: ExifData,
+        config: FrameConfig,
+        quality: ExportQuality
+    ): Bitmap {
+        val factor = exportSourceScale(source.width, source.height, exif, config, quality)
+        if (factor >= 1f) return render(context, source, exif, config)
+        val scaled = Bitmap.createScaledBitmap(
+            source,
+            max(1, (source.width * factor).roundToInt()),
+            max(1, (source.height * factor).roundToInt()),
+            true
+        )
+        return try {
+            render(context, scaled, exif, config)
+        } finally {
+            if (scaled !== source) scaled.recycle()
+        }
+    }
+
+    fun render(
+        context: Context,
+        source: Bitmap,
+        exif: ExifData,
+        config: FrameConfig
+    ): Bitmap {
+        val layout = computeLayout(source.width, source.height, exif, config)
+        val srcW = layout.srcW
+        val srcH = layout.srcH
+        val refDim = layout.refDim
+        val titleSize = layout.titleSize
+        val paramsSize = layout.paramsSize
+        val lineSpacing = layout.lineSpacing
+        val brandRes = layout.brandRes
+        val modelText = layout.modelText
+        val brandName = layout.brandName
+        val hasLogo = layout.hasLogo
+        val hasLine1 = layout.hasLine1
+        val hasLine2 = layout.hasLine2
+        val line2Text = layout.line2Text
+        val hasLine3 = layout.hasLine3
+        val line3Text = layout.line3Text
+        val footerHeight = layout.footerHeight
+        val gapBelowPhoto = layout.gapBelowPhoto
+        val totalContentH = layout.totalContentH
+        val canvasW = layout.canvasW
+        val canvasH = layout.canvasH
 
         val output = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && source.colorSpace != null) {
             Bitmap.createBitmap(canvasW, canvasH, Bitmap.Config.ARGB_8888, true, source.colorSpace!!)
